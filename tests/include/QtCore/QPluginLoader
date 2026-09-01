@@ -1,0 +1,11 @@
+#pragma once
+#include "QObject"
+
+class QPluginLoader {
+public:
+    QPluginLoader(const char *fileName);
+    ~QPluginLoader();
+
+    QObject *instance();
+    bool unload();
+};
