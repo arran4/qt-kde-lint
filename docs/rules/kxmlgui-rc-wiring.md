@@ -1,4 +1,6 @@
-# candidate rule: validate KXMLGUI `.rc` discovery, naming and install/resource wiring
+# `qt-kde-lint-kxmlgui-rc-wiring`
+
+This rule is a candidate and currently acts as a placeholder for a complex KDE project-level check.
 
 ## Candidate
 
