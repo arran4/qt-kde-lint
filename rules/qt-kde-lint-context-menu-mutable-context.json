@@ -1,6 +1,6 @@
 {
   "Name": "qt-kde-lint-context-menu-mutable-context",
-  "Query": "match callExpr(callee(functionDecl(hasName(\"connect\"))), hasArgument(1, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(cxxMethodDecl(hasName(\"triggered\"), ofClass(hasName(\"QAction\")))))))), hasArgument(3, lambdaExpr(has(compoundStmt(hasDescendant(memberExpr(member(fieldDecl()), hasObjectExpression(cxxThisExpr()))))))).bind(\"problem\"))",
+  "Query": "match callExpr(callee(functionDecl(hasName(\"connect\"))), hasArgument(1, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(cxxMethodDecl(hasName(\"triggered\"), ofClass(hasName(\"QAction\")))))))), hasAnyArgument(expr(lambdaExpr(has(cxxRecordDecl(has(cxxMethodDecl(hasBody(hasDescendant(memberExpr(member(fieldDecl()), hasObjectExpression(cxxThisExpr())))))))))).bind(\"problem\")))",
   "Diagnostic": [
     {
       "BindName": "problem",
