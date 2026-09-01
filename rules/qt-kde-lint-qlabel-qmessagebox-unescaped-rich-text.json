@@ -1,0 +1,16 @@
+{
+  "Name": "qt-kde-lint-qlabel-qmessagebox-unescaped-rich-text",
+  "Query": "match expr(anyOf(callExpr(callee(functionDecl(anyOf(hasName(\"about\"),hasName(\"critical\"),hasName(\"information\"),hasName(\"question\"),hasName(\"warning\")),hasDeclContext(cxxRecordDecl(hasName(\"QMessageBox\"))))),hasAnyArgument(expr(hasType(cxxRecordDecl(hasName(\"QString\"))),unless(anyOf(hasDescendant(stringLiteral()),hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"toHtmlEscaped\")))))))).bind(\"messagebox_dynamic_arg\"))).bind(\"messagebox_call\"),cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setText\"), ofClass(hasName(\"QLabel\")))),hasArgument(0,expr(hasType(cxxRecordDecl(hasName(\"QString\"))),anyOf(ignoringImplicit(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"arg\"))),unless(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"toHtmlEscaped\")))))))),unless(anyOf(stringLiteral(),hasDescendant(stringLiteral()),hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"toHtmlEscaped\"))))))))).bind(\"qlabel_dynamic_arg\")),anyOf(on(expr(unless(declRefExpr()))),allOf(on(declRefExpr(to(varDecl().bind(\"qlabel_var\")))),unless(hasAncestor(compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setTextFormat\"), ofClass(hasName(\"QLabel\")))),on(declRefExpr(to(varDecl(equalsBoundNode(\"qlabel_var\"))))))))))))).bind(\"qlabel_call\")))",
+  "Diagnostic": [
+    {
+      "BindName": "qlabel_call",
+      "Message": "Dynamic text is formatted into an HTML string literal without escaping. Call .toHtmlEscaped() on dynamic values inserted into HTML to avoid injection.",
+      "Level": "Warning"
+    },
+    {
+      "BindName": "messagebox_call",
+      "Message": "QMessageBox displays strings as rich text by default if they resemble HTML. Escape external data with .toHtmlEscaped() before passing it to static QMessageBox functions.",
+      "Level": "Warning"
+    }
+  ]
+}
