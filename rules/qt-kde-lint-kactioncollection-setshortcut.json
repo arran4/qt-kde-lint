@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-kactioncollection-setshortcut",
+  "Query": "match cxxMemberCallExpr(  callee(cxxMethodDecl(anyOf(hasName(\"setShortcut\"), hasName(\"setShortcuts\")), ofClass(hasName(\"QAction\")))),  anyOf(    on(declRefExpr(to(varDecl(hasInitializer(      expr(anyOf(        ignoringParenImpCasts(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"addAction\"), ofClass(hasName(\"KActionCollection\")))))),        ignoringParenImpCasts(cStyleCastExpr(hasSourceExpression(ignoringParenImpCasts(callExpr(callee(functionDecl(hasDeclContext(namespaceDecl(hasName(\"KStandardAction\")))))))))),        ignoringParenImpCasts(callExpr(callee(functionDecl(hasDeclContext(namespaceDecl(hasName(\"KStandardAction\")))))))      ))    ))))),    on(ignoringParenImpCasts(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"addAction\"), ofClass(hasName(\"KActionCollection\"))))))),    allOf(      on(declRefExpr(to(varDecl(hasType(pointsTo(cxxRecordDecl(hasName(\"QAction\"))))).bind(\"qaction_var\")))),      hasAncestor(compoundStmt(hasDescendant(        cxxMemberCallExpr(          callee(cxxMethodDecl(hasName(\"addAction\"), ofClass(hasName(\"KActionCollection\")))),          hasArgument(1, ignoringParenImpCasts(declRefExpr(to(varDecl(equalsBoundNode(\"qaction_var\"))))))        )      )))    )  )).bind(\"call\")",
+  "Diagnostic": [
+    {
+      "BindName": "call",
+      "Message": "This QAction is managed by KActionCollection, but its shortcut is assigned directly with QAction::setShortcut(). Set the collection's default shortcut with KActionCollection::setDefaultShortcut(s) so KDE can manage user overrides and avoid XMLGUI shortcut warnings.",
+      "Level": "Warning"
+    }
+  ]
+}
