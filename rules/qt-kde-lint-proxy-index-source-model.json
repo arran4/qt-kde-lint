@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-proxy-index-source-model",
+  "Query": "match cxxMemberCallExpr(\n  callee(cxxMethodDecl(hasName(\"item\"))),\n  hasArgument(0, cxxMemberCallExpr(\n    callee(cxxMethodDecl(hasName(\"row\"))),\n    on(declRefExpr(to(varDecl(hasInitializer(\n      expr(ignoringParenImpCasts(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"currentIndex\"))))))\n    )))))\n  ))\n).bind(\"item_call\")",
+  "Diagnostic": [
+    {
+      "BindName": "item_call",
+      "Message": "This QModelIndex comes directly from a view's currentIndex() but is being used against an item() method. If the view uses a proxy model, map it through the proxy chain with `mapToSource()` before using the index or row with the source model; sorting/filtering can otherwise target the wrong item.",
+      "Level": "Warning"
+    }
+  ]
+}
