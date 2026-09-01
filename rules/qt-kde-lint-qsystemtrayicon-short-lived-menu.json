@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qsystemtrayicon-short-lived-menu",
+  "Query": "match cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setContextMenu\"), ofClass(hasName(\"QSystemTrayIcon\")))), hasArgument(0, expr(ignoringImpCasts(ignoringParenCasts(anyOf(unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(ignoringParenCasts(declRefExpr(to(varDecl(hasLocalStorage())))))), cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"get\"), ofClass(hasAnyName(\"::std::unique_ptr\", \"::QScopedPointer\", \"unique_ptr\", \"QScopedPointer\")))), on(expr(ignoringParenCasts(declRefExpr(to(varDecl(hasLocalStorage()))))))))))))).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "QSystemTrayIcon does not take ownership of its context menu, but this menu has shorter storage duration than the tray icon. Keep the QMenu alive (for example as a suitably-parented/member object) for as long as the tray icon can request it.",
+      "Level": "Warning"
+    }
+  ]
+}
