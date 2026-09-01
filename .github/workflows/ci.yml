@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Test repository tooling
+        run: python3 -m unittest discover -s tests/harness -v
+      - name: Validate and generate rule configuration
+        run: python3 tools/build_config.py --output build/.clang-tidy
+
+  declarative-rules:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 23 clang-tidy
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 23
+          sudo apt-get install -y clang-tidy-23
+          clang-tidy-23 --version
+      - name: Test declarative rules
+        run: python3 tools/test_rules.py --clang-tidy clang-tidy-23
