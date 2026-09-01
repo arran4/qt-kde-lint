@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qmainwindow-stable-objectname",
+  "Query": "match expr(anyOf(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"addToolBar\"), returns(pointerType(pointee(hasDeclaration(cxxRecordDecl(hasName(\"QToolBar\"))))))))), cxxNewExpr(hasType(pointerType(pointee(hasDeclaration(cxxRecordDecl(hasName(\"QDockWidget\")))))))), anyOf(hasAncestor(cxxRecordDecl(anyOf(isDerivedFrom(hasName(\"KMainWindow\")), isDerivedFrom(hasName(\"KXmlGuiWindow\")), hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"saveState\"), hasName(\"restoreState\"))))))))), hasAncestor(functionDecl(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"saveState\"), hasName(\"restoreState\"))))))))), unless(hasAncestor(varDecl(varDecl().bind(\"name\"), hasAncestor(compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setObjectName\"))), on(ignoringParenImpCasts(declRefExpr(to(varDecl(equalsBoundNode(\"name\"))))))))))))), unless(hasAncestor(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setObjectName\")))))), unless(hasAncestor(binaryOperator(isAssignmentOperator(), hasLHS(ignoringParenImpCasts(memberExpr(member(fieldDecl().bind(\"member_name\"))))), hasAncestor(compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setObjectName\"))), on(ignoringParenImpCasts(memberExpr(member(fieldDecl(equalsBoundNode(\"member_name\")))))))))))))).bind(\"bad_expr\")",
+  "Diagnostic": [
+    {
+      "BindName": "bad_expr",
+      "Message": "This QToolBar or QDockWidget participates in QMainWindow state persistence but has no stable objectName. saveState()/restoreState() cannot reliably identify it; assign a deterministic, untranslated object name before restoring or saving window state.",
+      "Level": "Warning"
+    }
+  ]
+}
