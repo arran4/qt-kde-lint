@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-action-semantic-context",
+  "Query": "match callExpr(callee(functionDecl(anyOf(hasName(\"::i18n\"), hasName(\"::i18nd\"), hasName(\"::ki18n\"), hasName(\"::ki18nd\")))), anyOf(hasAncestor(cxxConstructExpr(hasDeclaration(cxxConstructorDecl(ofClass(hasName(\"::QAction\")))))), hasAncestor(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setText\"), ofClass(hasName(\"::QAction\")))))), hasAncestor(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"addAction\"), ofClass(anyOf(hasName(\"::QMenu\"), hasName(\"::KActionCollection\"))))))))).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "UI action labels translated with plain i18n() lack semantic context. Where the surrounding API makes the action role unambiguous (like QAction::setText or QMenu::addAction), prefer i18nc() with a semantic context such as \"@action\", \"@action:inmenu\", or \"@action:button\" to aid translators.",
+      "Level": "Warning"
+    }
+  ]
+}
