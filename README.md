@@ -49,6 +49,12 @@ Query-based custom checks currently require `--experimental-custom-checks`. The 
 
 `qt-kde-lint` is intended to run as an additional static-analysis pass in the same CI pipeline that already builds Qt/KDE code. It should **not** replace the project's normal compiler warnings, `.clang-tidy`, Clazy, `cppcheck`, formatting, build, or tests.
 
+The instructions below are intended to work with common Qt/KDE GitHub Actions layouts, including:
+
+- a dedicated C++/Qt lint job that already creates `compile_commands.json` and runs clang-tidy;
+- a combined build/test job where static analysis is currently limited to formatting or `cppcheck`;
+- container-based jobs using a KDE/openSUSE, Debian, Ubuntu, or similar build environment.
+
 A consumer workflow needs three things:
 
 1. a CMake compilation database generated with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`;
@@ -59,7 +65,7 @@ The generated configuration intentionally enables only `custom-qt-kde-lint-*`. R
 
 ### Minimal addition to an existing Qt/C++ lint job
 
-This is the shape to add after the project's existing CMake configure step:
+If a lint job already configures the project with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, add the following after configuration and after any existing clang-tidy/Clazy checks:
 
 ```yaml
       - name: Check out qt-kde-lint
@@ -101,44 +107,9 @@ The project's configure command must include the compilation database flag, for 
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
-### Installing clang-tidy 23
+### Keep the existing lint pass separate
 
-Do not assume that an image's unversioned `clang-tidy` or `clang-tools` package is new enough. Verify the major version explicitly.
-
-This repository's own CI uses the LLVM apt repository on Ubuntu 24.04:
-
-```yaml
-      - name: Install LLVM 23 clang-tidy
-        run: |
-          wget -q https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 23
-          sudo apt-get install -y clang-tidy-23
-          clang-tidy-23 --version
-```
-
-On a Debian image where `clang-tidy-23` is available directly, install the versioned package and still call the versioned executable:
-
-```yaml
-      - run: apt-get update && apt-get install -y python3 clang-tidy-23
-      - run: clang-tidy-23 --version
-```
-
-If the Qt/KDE build image does not provide clang-tidy 23 yet, keep the existing lint/build job unchanged and add a dedicated qt-kde-lint job using an LLVM-23-capable image with the same project development dependencies. Do not silently fall back to clang-tidy 22 or older: those versions do not provide the custom-check interface this repository currently targets.
-
-### Example matching `kjules` / `KMagMux`
-
-[`kjules`](https://github.com/arran4/kjules/blob/main/.github/workflows/ci.yaml) and [`KMagMux`](https://github.com/arran4/KMagMux/blob/main/.github/workflows/ci.yml) already have the important part of the integration: a dedicated Qt/C++ lint job that configures CMake with `CMAKE_EXPORT_COMPILE_COMMANDS=ON` and then runs clang-tidy against `build/`.
-
-For that workflow shape:
-
-1. leave the existing format, `cppcheck`, clang-tidy and Clazy-style checks in place;
-2. after CMake configuration, check out `arran4/qt-kde-lint` into `.qt-kde-lint`;
-3. make sure that lint environment has `python3` and `clang-tidy-23`;
-4. generate `build/qt-kde-lint.clang-tidy`;
-5. run the separate qt-kde-lint command from the minimal example above.
-
-For example, the relevant part should conceptually become:
+A workflow that already runs clang-tidy should normally look conceptually like this:
 
 ```yaml
       - name: Configure CMake
@@ -147,8 +118,8 @@ For example, the relevant part should conceptually become:
           -DQT_MAJOR_VERSION=6 \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-      - name: Existing clang-tidy
-        run: run-clang-tidy -p build -extra-arg=-Wno-unknown-argument src tests bench
+      - name: Existing clang-tidy and Clazy checks
+        run: run-clang-tidy -p build src tests
 
       - name: Check out qt-kde-lint
         uses: actions/checkout@v4
@@ -162,7 +133,7 @@ For example, the relevant part should conceptually become:
           python3 .qt-kde-lint/tools/build_config.py \
             --rules-dir .qt-kde-lint/rules \
             --output build/qt-kde-lint.clang-tidy
-          find src tests bench -type f \
+          find src tests -type f \
             \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
             -print0 2>/dev/null \
             | xargs -0 -r clang-tidy-23 \
@@ -171,19 +142,17 @@ For example, the relevant part should conceptually become:
                 -p build
 ```
 
-The existing `kjules` lint step currently soft-fails its normal clang-tidy invocation with `|| true`. That may be useful while migrating existing warnings, but the new qt-kde-lint step should not inherit that behavior: these rules are deliberately designed to be low-noise and merge-blocking.
+The important point is that the project's normal `.clang-tidy` remains authoritative for its existing checks, while qt-kde-lint supplies a separate generated configuration containing only this project's custom checks.
 
-### Example matching `kllamabooks` / `kgithub-notify`
+### Separate analysis job when the build job does not run clang-tidy
 
-[`kllamabooks`](https://github.com/arran4/kllamabooks/blob/main/.github/workflows/ci.yml) and [`kgithub-notify`](https://github.com/arran4/kgithub-notify/blob/main/.github/workflows/ci.yml) currently perform formatting/static analysis and build/test work in Debian-based jobs but do not generate a compilation database for a clang-tidy pass.
+If the existing build/test job does not export a compilation database, adding a sibling analysis job is often less disruptive than changing the build pipeline. The analysis job only needs enough Qt/KF development dependencies for CMake to configure successfully and clang-tidy to parse the actual translation units.
 
-The least disruptive integration is to add a sibling `qt-kde-lint` job and copy the project's normal Qt/KF development-package installation into it. For example:
+For example:
 
 ```yaml
   qt-kde-lint:
     name: qt-kde-lint
-    needs: [route, discover]
-    if: ${{ needs.discover.outputs.has_qt_cpp == 'true' && needs.route.outputs.run_code_checks == 'true' }}
     runs-on: ubuntu-latest
     container:
       # Use an image/repository combination that actually provides clang-tidy-23.
@@ -196,8 +165,8 @@ The least disruptive integration is to add a sibling `qt-kde-lint` job and copy 
             qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools \
             libkf6coreaddons-dev libkf6xmlgui-dev libkf6configwidgets-dev \
             libkf6i18n-dev
-          # Add the same extra Qt/KF/project development packages used by the
-          # repository's normal build job.
+          # Add the same extra Qt/KF/project development packages needed by
+          # the repository's normal CMake configure step.
 
       - uses: actions/checkout@v4
 
@@ -228,18 +197,56 @@ The least disruptive integration is to add a sibling `qt-kde-lint` job and copy 
                 -p build
 ```
 
-Keep the existing build/test job on its preferred distribution if desired. The analysis job only needs to configure the project successfully and expose the same headers/compile definitions closely enough for clang-tidy to parse the real translation units.
+Keep the normal build/test job on its preferred distribution if desired. The analysis job only needs to configure the project successfully and expose the same headers, generated files, include paths, compile definitions, and language options closely enough for clang-tidy to parse the real build.
 
-### `kbrowserselect`
+### Installing clang-tidy 23
 
-[`kbrowserselect`](https://github.com/arran4/kbrowserselect/blob/main/.github/workflows/ci.yml) currently has its Qt/C++ build/test job disabled with `if: false`, and its lint/build commands are also guarded by `|| true`. Adding qt-kde-lint there only becomes meaningful after the Qt/C++ CI job is enabled. When doing so:
+Do not assume that an image's unversioned `clang-tidy` or `clang-tools` package is new enough. Verify the major version explicitly.
 
-- add `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` to its CMake configure command;
-- use clang-tidy 23 or newer;
-- run qt-kde-lint as a separate pass;
-- do not use `|| true` for the qt-kde-lint command.
+This repository's own CI uses the LLVM apt repository on Ubuntu 24.04:
 
-That makes a qt-kde-lint finding an actual automated-test failure rather than informational log output.
+```yaml
+      - name: Install LLVM 23 clang-tidy
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 23
+          sudo apt-get install -y clang-tidy-23
+          clang-tidy-23 --version
+```
+
+On an image where `clang-tidy-23` is available directly, install the versioned package and still call the versioned executable:
+
+```yaml
+      - run: apt-get update && apt-get install -y python3 clang-tidy-23
+      - run: clang-tidy-23 --version
+```
+
+If the normal Qt/KDE build image does not provide clang-tidy 23 yet, keep the existing lint/build job unchanged and add a dedicated qt-kde-lint job using an LLVM-23-capable image with the same project development dependencies. Do not silently fall back to clang-tidy 22 or older: those versions do not provide the custom-check interface this repository currently targets.
+
+### CI enforcement
+
+For automated testing, qt-kde-lint must run in a job that actually executes for pull requests and pushes where code checks are expected.
+
+Avoid these patterns for the qt-kde-lint step:
+
+```yaml
+if: false
+```
+
+and:
+
+```sh
+clang-tidy-23 ... || true
+```
+
+Either makes the integration informational rather than protective. The intended behavior is:
+
+1. CMake configuration fails if the project cannot be analyzed correctly;
+2. qt-kde-lint diagnostics make the step fail;
+3. that job is included in the repository's required GitHub status checks before merge.
+
+Existing legacy/static-analysis steps may temporarily soft-fail while their warning backlog is being migrated, but qt-kde-lint rules are intended to be low-noise enough to be merge-blocking from the point they are adopted.
 
 ### Why checkout the rules instead of copying them into each project?
 
