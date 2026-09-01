@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qlist-contains-in-loop",
+  "Query": "match cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"contains\"), ofClass(hasName(\"QList\")))), on(expr(anyOf(declRefExpr(to(varDecl().bind(\"list\"))), memberExpr(member(fieldDecl().bind(\"listField\")))))), hasAncestor(anyOf(forStmt(), cxxForRangeStmt(), whileStmt(), doStmt())), hasAncestor(ifStmt(hasThen(anyOf(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"append\"), hasName(\"push_back\")), ofClass(hasName(\"QList\")))), on(expr(anyOf(declRefExpr(to(varDecl(equalsBoundNode(\"list\")))), memberExpr(member(fieldDecl(equalsBoundNode(\"listField\")))))))), cxxOperatorCallExpr(anyOf(hasOverloadedOperatorName(\"<<\"), hasOverloadedOperatorName(\"+=\")), hasArgument(0, expr(ignoringImpCasts(anyOf(declRefExpr(to(varDecl(equalsBoundNode(\"list\")))), memberExpr(member(fieldDecl(equalsBoundNode(\"listField\"))))))))), hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"append\"), hasName(\"push_back\")), ofClass(hasName(\"QList\")))), on(expr(anyOf(declRefExpr(to(varDecl(equalsBoundNode(\"list\")))), memberExpr(member(fieldDecl(equalsBoundNode(\"listField\"))))))))), hasDescendant(cxxOperatorCallExpr(anyOf(hasOverloadedOperatorName(\"<<\"), hasOverloadedOperatorName(\"+=\")), hasArgument(0, expr(ignoringImpCasts(anyOf(declRefExpr(to(varDecl(equalsBoundNode(\"list\")))), memberExpr(member(fieldDecl(equalsBoundNode(\"listField\"))))))))))))))).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "This loop performs a linear QList::contains() scan for each item while building/checking a set of unique values, making the operation quadratic. Use QSet membership or precompute an indexed representation when list ordering is not required.",
+      "Level": "Warning"
+    }
+  ]
+}
