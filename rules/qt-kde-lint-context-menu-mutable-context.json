@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-context-menu-mutable-context",
+  "Query": "match callExpr(callee(functionDecl(hasName(\"connect\"))), hasArgument(1, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(cxxMethodDecl(hasName(\"triggered\"), ofClass(hasName(\"QAction\")))))))), hasArgument(3, lambdaExpr(has(compoundStmt(hasDescendant(memberExpr(member(fieldDecl()), hasObjectExpression(cxxThisExpr()))))))).bind(\"problem\"))",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "Deferred context-menu callback reads mutable transient context from an owning object instead of snapshotting the value. Consider capturing the specific value by value in the lambda.",
+      "Level": "Warning"
+    }
+  ]
+}
