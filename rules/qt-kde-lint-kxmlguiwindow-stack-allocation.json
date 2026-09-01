@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-kxmlguiwindow-stack-allocation",
+  "Query": "match varDecl(hasLocalStorage(), hasType(hasUnqualifiedDesugaredType(recordType(hasDeclaration(cxxRecordDecl(isDerivedFrom(hasAnyName(\"::KMainWindow\", \"::KXmlGuiWindow\"))))))), varDecl().bind(\"window\"), unless(hasDeclContext(decl(hasDescendant(cxxMemberCallExpr(on(declRefExpr(to(varDecl(equalsBoundNode(\"window\"))))), callee(cxxMethodDecl(hasName(\"setAttribute\"))), hasArgument(0, declRefExpr(to(enumConstantDecl(hasName(\"WA_DeleteOnClose\"))))), hasArgument(1, cxxBoolLiteral(equals(false)))))))))",
+  "Diagnostic": [
+    {
+      "BindName": "window",
+      "Message": "This KMainWindow/KXmlGuiWindow-derived object has automatic storage duration but normally deletes itself when closed. A close can therefore destroy the object before its C++ scope ends and cause a second destruction. Allocate it with an appropriate owner or explicitly disable WA_DeleteOnClose for this stack lifetime.",
+      "Level": "Warning"
+    }
+  ]
+}
