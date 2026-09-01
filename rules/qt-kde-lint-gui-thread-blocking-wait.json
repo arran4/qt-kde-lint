@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-gui-thread-blocking-wait",
+  "Query": "match expr(anyOf(callExpr(callee(functionDecl(anyOf(hasName(\"::QThread::sleep\"), hasName(\"::QThread::msleep\"), hasName(\"::QThread::usleep\"))))), cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"exec\"), ofClass(hasName(\"::QEventLoop\")))))), hasAncestor(cxxMethodDecl(ofClass(isDerivedFrom(hasAnyName(\"::QWidget\", \"::QWindow\", \"::QDialog\", \"::QMainWindow\", \"::KMainWindow\", \"::KXmlGuiWindow\"))), unless(isStaticStorageClass())))).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "This blocking wait runs in a Qt GUI object method and prevents the event loop from processing input, repaint and queued events. Use asynchronous completion/timers or move the work to a worker thread instead of blocking the GUI thread.",
+      "Level": "Warning"
+    }
+  ]
+}
