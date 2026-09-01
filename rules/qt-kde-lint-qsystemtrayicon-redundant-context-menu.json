@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qsystemtrayicon-redundant-context-menu",
+  "Query": "match compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setContextMenu\"))), on(declRefExpr(to(varDecl(hasType(pointerType(pointee(hasDeclaration(cxxRecordDecl(hasName(\"QSystemTrayIcon\"))))))).bind(\"tray_icon\")))), hasArgument(0, expr(ignoringParenImpCasts(declRefExpr(to(varDecl().bind(\"tray_menu\")))))))), hasDescendant(callExpr(callee(functionDecl(hasName(\"connect\"))), hasArgument(0, expr(ignoringParenImpCasts(declRefExpr(to(varDecl(equalsBoundNode(\"tray_icon\"))))))), hasAnyArgument(expr(ignoringImpCasts(lambdaExpr(hasDescendant(anyOf(ifStmt(hasCondition(expr(hasDescendant(declRefExpr(to(enumConstantDecl(hasName(\"Context\"))))))), hasThen(anyOf(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"popup\"), hasName(\"exec\")))), on(declRefExpr(to(varDecl(equalsBoundNode(\"tray_menu\")))))).bind(\"popup_call\"), stmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"popup\"), hasName(\"exec\")))), on(declRefExpr(to(varDecl(equalsBoundNode(\"tray_menu\")))))).bind(\"popup_call\")))))), switchStmt(hasDescendant(caseStmt(hasDescendant(declRefExpr(to(enumConstantDecl(hasName(\"Context\"))))), hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"popup\"), hasName(\"exec\")))), on(declRefExpr(to(varDecl(equalsBoundNode(\"tray_menu\")))))).bind(\"popup_call\"))))))))))))))",
+  "Diagnostic": [
+    {
+      "BindName": "popup_call",
+      "Message": "This QSystemTrayIcon already has a context menu installed with setContextMenu(), which Qt opens when Context is requested. Manually calling popup()/exec() for the same menu can double-handle the request and conflict with the native tray host; remove the manual popup and let QSystemTrayIcon present the menu.",
+      "Level": "Warning"
+    }
+  ]
+}
