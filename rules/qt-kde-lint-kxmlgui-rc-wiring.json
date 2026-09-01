@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-kxmlgui-rc-wiring",
+  "Query": "match cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setXMLFile\")))).bind(\"wiring\")",
+  "Diagnostic": [
+    {
+      "BindName": "wiring",
+      "Message": "Placeholder: project-level KDE checker for KXMLGUI .rc wiring is required but cannot be fully implemented as a pure clang-tidy declarative rule. Consider verifying the .rc file is correctly discovered and installed.",
+      "Level": "Warning"
+    }
+  ]
+}
