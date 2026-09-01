@@ -1,0 +1,12 @@
+{
+  "_comment": "Requires a future release of Clang with stringLiteral value matchers (e.g., regex matching).",
+  "Name": "qt-kde-lint-desktop-file-name",
+  "Query": "match callExpr(callee(functionDecl(hasName(\"setDesktopFileName\"))), hasArgument(0, expr(hasDescendant(stringLiteral(matches(\".*\\\\.desktop$\")).bind(\"str\")))))",
+  "Diagnostic": [
+    {
+      "BindName": "str",
+      "Message": "QGuiApplication::setDesktopFileName() expects the desktop entry basename without the .desktop extension. Pass org.example.App, not org.example.App.desktop.",
+      "Level": "Warning"
+    }
+  ]
+}
