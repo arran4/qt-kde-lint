@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qpluginloader-instance-delete",
+  "Query": "match expr( anyOf( cxxDeleteExpr( has( expr( anyOf( ignoringParenImpCasts( declRefExpr( to( varDecl( hasInitializer( expr( anyOf( ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ), ignoringParenImpCasts( castExpr( hasSourceExpression( ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ), ignoringParenImpCasts( callExpr( callee( functionDecl( hasName(\"qobject_cast\") ) ), hasArgument( 0, ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ) ) ) ) ) ) ) ), ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ) ), cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"deleteLater\") ) ), on( expr( anyOf( ignoringParenImpCasts( declRefExpr( to( varDecl( hasInitializer( expr( anyOf( ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ), ignoringParenImpCasts( castExpr( hasSourceExpression( ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ), ignoringParenImpCasts( callExpr( callee( functionDecl( hasName(\"qobject_cast\") ) ), hasArgument( 0, ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ) ) ) ) ) ) ) ), ignoringParenImpCasts( cxxMemberCallExpr( callee( cxxMethodDecl( hasName(\"instance\"), ofClass( hasName(\"QPluginLoader\") ) ) ) ) ) ) ) ) ) ) ).bind(\"root\")",
+  "Diagnostic": [
+    {
+      "BindName": "root",
+      "Message": "This object is the root component returned by QPluginLoader::instance() and is owned by the plugin loader. Do not delete it manually; QPluginLoader::unload() deletes the root component when the plugin is actually unloaded.",
+      "Level": "Warning"
+    }
+  ]
+}

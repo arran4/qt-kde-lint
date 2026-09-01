@@ -1,0 +1,9 @@
+#pragma once
+class QObject {
+public:
+    virtual ~QObject() = default;
+    void deleteLater();
+};
+
+template<typename T>
+T qobject_cast(QObject *object);
