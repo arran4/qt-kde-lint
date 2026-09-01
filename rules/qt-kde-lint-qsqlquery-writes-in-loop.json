@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qsqlquery-writes-in-loop",
+  "Query": "match cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"exec\"), ofClass(hasName(\"QSqlQuery\")))), hasAncestor(stmt(anyOf(forStmt(), cxxForRangeStmt(), whileStmt(), doStmt()))), unless(hasAncestor(compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"transaction\"), ofClass(hasName(\"QSqlDatabase\")))))))))).bind(\"exec_call\")",
+  "Diagnostic": [
+    {
+      "BindName": "exec_call",
+      "Message": "This SQL write executes once per loop iteration without a visible batch or surrounding transaction. Bulk QtSql/SQLite writes can create an N+1 transaction bottleneck; consider `execBatch()` or one explicit transaction around the operation.",
+      "Level": "Warning"
+    }
+  ]
+}
