@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-ambiguous-qeventloop-timeout",
+  "Query": "match compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"exec\"))), on(declRefExpr(to(varDecl(hasType(cxxRecordDecl(hasName(\"QEventLoop\")))).bind(\"loop\"))))).bind(\"exec\")), hasDescendant(callExpr(callee(functionDecl(hasName(\"singleShot\"))), hasArgument(1, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(varDecl(equalsBoundNode(\"loop\"))))))), hasArgument(2, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(cxxMethodDecl(hasName(\"quit\"))))))))), hasDescendant(callExpr(callee(functionDecl(hasName(\"connect\"))), hasArgument(2, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(varDecl(equalsBoundNode(\"loop\"))))))), hasArgument(3, unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr(to(cxxMethodDecl(hasName(\"quit\"))))))), hasArgument(0, expr(ignoringParenImpCasts(declRefExpr(to(decl().bind(\"sender\"))))))).bind(\"connect\")), hasDescendant(cxxMemberCallExpr(on(expr(ignoringParenImpCasts(declRefExpr(to(decl(equalsBoundNode(\"sender\"))))))))))",
+  "Diagnostic": [
+    {
+      "BindName": "exec",
+      "Message": "This local event loop can exit because either the operation finished or the timeout fired, but the result is used without distinguishing those paths. Track completion or handle the timeout explicitly before consuming the asynchronous result.",
+      "Level": "Warning"
+    }
+  ]
+}
