@@ -21,6 +21,8 @@ jobs:
         run: python3 -m unittest discover -s tests/harness -v
       - name: Validate and generate rule configuration
         run: python3 tools/build_config.py --output build/.clang-tidy
+      - name: Test QML declarative rules
+        run: python3 tools/test_qml.py
 
   declarative-rules:
     runs-on: ubuntu-24.04

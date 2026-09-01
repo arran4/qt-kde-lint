@@ -53,11 +53,23 @@ def main() -> int:
     failures: list[str] = []
     include_dir = args.tests_dir / "include"
 
+    # Separate C++ rules and others. Here we only run C++ rules that have bad*.cpp or good*.cpp
+    cxx_rules = []
+    for rule in rules:
+        name = rule["Name"]
+        rule_tests = args.tests_dir / name
+        if list(rule_tests.glob("*.cpp")):
+            cxx_rules.append(rule)
+
+    if not cxx_rules:
+        print("no C++ declarative rules to test")
+        return 0
+
     with tempfile.TemporaryDirectory(prefix="qt-kde-lint-") as temp_dir:
         config_path = Path(temp_dir) / ".clang-tidy"
-        config_path.write_text(json.dumps(build_config(rules), indent=2) + "\n", encoding="utf-8")
+        config_path.write_text(json.dumps(build_config(cxx_rules), indent=2) + "\n", encoding="utf-8")
 
-        for rule in rules:
+        for rule in cxx_rules:
             name = rule["Name"]
             marker = f"[custom-{name}]"
             rule_tests = args.tests_dir / name
@@ -89,7 +101,7 @@ def main() -> int:
         print("\n\n".join(failures))
         return 1
 
-    print(f"all {len(rules)} declarative rule(s) passed regression tests")
+    print(f"all {len(cxx_rules)} declarative C++ rule(s) passed regression tests")
     return 0
 
 

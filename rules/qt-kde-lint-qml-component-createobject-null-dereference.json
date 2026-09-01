@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qml-component-createobject-null-dereference",
+  "Query": "match anything()",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "Component.createObject() can return null. Check the result (or use a null-safe operation) before accessing the dynamically created object.",
+      "Level": "Warning"
+    }
+  ]
+}

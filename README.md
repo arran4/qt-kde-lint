@@ -31,16 +31,24 @@ See [`docs/RULE_AUTHORING.md`](docs/RULE_AUTHORING.md) for the contract.
 - `rules/` — declarative custom-check definitions, one JSON file per rule. JSON is used because it can be validated with Python's standard library and emitted as YAML-compatible clang-tidy configuration.
 - `tests/<rule-name>/` — positive and negative regression fixtures for each rule.
 - `tools/build_config.py` — validates rules and generates a clang-tidy configuration.
-- `tools/test_rules.py` — runs every rule's regression fixtures.
+- `tools/test_rules.py` — runs every C++ rule's regression fixtures.
+- `tools/qml_linter.py` — lints QML files directly for QML rules.
+- `tools/test_qml.py` — runs QML regression fixtures.
 - `docs/` — architecture and rule-authoring rationale.
 
 ## Local development
 
-LLVM/clang-tidy 23 or newer with query-based custom checks enabled is required.
+LLVM/clang-tidy 23 or newer with query-based custom checks enabled is required for C++ rules.
 
 ```sh
 python3 tools/build_config.py --output build/.clang-tidy
 python3 tools/test_rules.py --clang-tidy clang-tidy-23
+```
+
+To run the QML rules manually against a codebase:
+
+```sh
+find /path/to/project -name '*.qml' -exec python3 tools/qml_linter.py {} +
 ```
 
 Query-based custom checks currently require `--experimental-custom-checks`. The CI workflow pins the intended clang-tidy major rather than relying on the GitHub runner default.
