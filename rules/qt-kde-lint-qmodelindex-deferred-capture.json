@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qmodelindex-deferred-capture",
+  "Query": "match lambdaExpr(hasAnyCapture(lambdaCapture(capturesVar(varDecl(anyOf(hasType(hasUnqualifiedDesugaredType(recordType(hasDeclaration(recordDecl(hasName(\"::QModelIndex\")))))), hasType(references(hasUnqualifiedDesugaredType(recordType(hasDeclaration(recordDecl(hasName(\"::QModelIndex\"))))))))).bind(\"capture\")))), hasAncestor(callExpr(callee(functionDecl(hasAnyName(\"::QObject::connect\", \"::QTimer::singleShot\", \"connect\", \"singleShot\")))))).bind(\"lambda\")",
+  "Diagnostic": [
+    {
+      "BindName": "lambda",
+      "Message": "This QModelIndex is captured for deferred use after control returns to the event loop. Ordinary model changes can invalidate a QModelIndex before the action runs. Capture a QPersistentModelIndex (and still check isValid() at use time) when the operation is meant to follow the same model item.",
+      "Level": "Warning"
+    }
+  ]
+}
