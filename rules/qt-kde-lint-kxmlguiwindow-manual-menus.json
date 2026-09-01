@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-kxmlguiwindow-manual-menus",
+  "Query": "match cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(allOf(hasName(\"addMenu\"), ofClass(hasName(\"::QMenuBar\"))), allOf(hasName(\"addToolBar\"), ofClass(hasName(\"::QMainWindow\")))))), hasAncestor(cxxMethodDecl(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"setupGUI\"))))), ofClass(cxxRecordDecl(isDerivedFrom(anyOf(hasName(\"::KXmlGuiWindow\"), hasName(\"::KMainWindow\")))))))).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "This KXmlGuiWindow manually builds top-level menus/toolbars while also using setupGUI(). Register persistent actions in actionCollection() and place them through the XMLGUI resource; XMLGUI may replace containers and manual additions can disappear, duplicate, or leave stale widget pointers.",
+      "Level": "Warning"
+    }
+  ]
+}
