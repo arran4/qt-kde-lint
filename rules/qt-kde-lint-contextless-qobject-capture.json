@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-contextless-qobject-capture",
+  "Query": "match callExpr(anyOf(allOf(callee(functionDecl(hasName(\"::QTimer::singleShot\"))), unless(hasAnyArgument(hasType(pointerType(pointee(hasDeclaration(cxxRecordDecl(isSameOrDerivedFrom(\"::QObject\"))))))))), callee(functionDecl(hasName(\"::QtConcurrent::run\")))), hasAnyArgument(ignoringImpCasts(lambdaExpr(anyOf(allOf(hasAnyCapture(lambdaCapture(capturesThis())), hasAncestor(cxxMethodDecl(ofClass(isSameOrDerivedFrom(\"::QObject\"))))), hasAnyCapture(lambdaCapture(capturesVar(varDecl(anyOf(hasType(pointerType(pointee(hasDeclaration(cxxRecordDecl(isSameOrDerivedFrom(\"::QObject\")))))), hasType(referenceType(pointee(hasDeclaration(cxxRecordDecl(isSameOrDerivedFrom(\"::QObject\"))))))))))))).bind(\"lambda\"))))",
+  "Diagnostic": [
+    {
+      "BindName": "lambda",
+      "Message": "This deferred functor captures a raw QObject pointer but has no QObject lifetime context. The callback may run after the object is destroyed. Use the API's QObject-context overload where available, or guard/capture an appropriate lifetime handle such as QPointer and verify it before dereference.",
+      "Level": "Warning"
+    }
+  ]
+}
