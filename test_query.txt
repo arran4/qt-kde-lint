@@ -1,9 +1,0 @@
-m cxxMemberCallExpr(
-  callee(cxxMethodDecl(hasName("exec"), ofClass(hasName("QSqlQuery")))),
-  hasAncestor(stmt(anyOf(forStmt(), cxxForRangeStmt(), whileStmt(), doStmt()))),
-  unless(hasAncestor(compoundStmt(hasDescendant(cxxMemberCallExpr(callee(cxxMethodDecl(hasName("transaction"), ofClass(hasName("QSqlDatabase"))))))))),
-  anyOf(
-    argumentCountIs(0),
-    hasArgument(0, expr(unless(hasDescendant(stringLiteral(matchesRegex("^[ \t\r\n]*[sS][eE][lL][eE][cC][tT]"))))))
-  )
-)
