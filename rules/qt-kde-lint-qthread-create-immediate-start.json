@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-qthread-create-immediate-start",
+  "Query": "match cxxMemberCallExpr(\n  callee(cxxMethodDecl(hasName(\"::QThread::start\"))),\n  on(callExpr(hasDeclaration(functionDecl(hasName(\"::QThread::create\")))))\n).bind(\"start\")",
+  "Diagnostic": [
+    {
+      "BindName": "start",
+      "Message": "QThread::create() returns a heap-allocated QThread whose lifetime must be managed, but this code immediately starts it and discards the only returned pointer. Retain the QThread pointer and arrange a defined lifetime (commonly connect QThread::finished to QObject::deleteLater) before calling start(); otherwise the QThread object cannot be reclaimed or controlled after launch.",
+      "Level": "Warning"
+    }
+  ]
+}
