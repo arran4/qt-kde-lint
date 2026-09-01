@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-presentation-state",
+  "Query": "match expr(anyOf(cxxOperatorCallExpr(hasOperatorName(\"==\"), hasAnyArgument(expr(ignoringImplicit(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"text\"), hasName(\"windowTitle\")))))))), hasAnyArgument(expr(hasDescendant(stringLiteral())))).bind(\"problem\"), cxxMemberCallExpr(callee(cxxMethodDecl(hasName(\"contains\"))), onImplicitObjectArgument(expr(ignoringImplicit(cxxMemberCallExpr(callee(cxxMethodDecl(anyOf(hasName(\"text\"), hasName(\"windowTitle\")))))))), hasAnyArgument(expr(hasDescendant(stringLiteral())))).bind(\"problem\")))",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "Application behavior is being selected by comparing UI/display text to a magic string. Presentation text can change independently of state (including through localization or error handling); keep semantic state separately and render the text from that state.",
+      "Level": "Warning"
+    }
+  ]
+}
