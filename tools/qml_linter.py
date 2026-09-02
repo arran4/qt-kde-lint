@@ -19,8 +19,45 @@ def check_qml(filepath):
     with open(filepath, 'rb') as f:
         tree = parser.parse(f.read())
 
+    known_components = set()
+
+    # Pass 1: Collect Component IDs
+    def collect_components(node):
+        if node.type == 'ui_object_definition':
+            # Check if this object is a Component
+            is_component_def = False
+            for child in node.children:
+                if child.type == 'identifier' and child.text == b'Component':
+                    is_component_def = True
+                    break
+
+            if is_component_def:
+                # Find its initializer block `{ ... }`
+                for child in node.children:
+                    if child.type == 'ui_object_initializer':
+                        # Look for an `id` binding
+                        for stmt in child.children:
+                            if stmt.type == 'ui_binding':
+                                key_node = None
+                                val_node = None
+                                for binding_child in stmt.children:
+                                    if binding_child.type == 'identifier':
+                                        key_node = binding_child
+                                    elif binding_child.type == 'expression_statement':
+                                        val_node = binding_child
+                                if key_node and key_node.text == b'id' and val_node:
+                                    # The id value is an identifier in the expression statement
+                                    for exp_child in val_node.children:
+                                        if exp_child.type == 'identifier':
+                                            known_components.add(exp_child.text)
+        for child in node.children:
+            collect_components(child)
+
+    collect_components(tree.root_node)
+
     issues = []
 
+    # Pass 2: Check createObject calls
     def visit(node):
         if node.type == 'call_expression':
             # Check if it's createObject
@@ -47,16 +84,12 @@ def check_qml(filepath):
 
                     is_component = False
                     if receiver:
-                        # Simplistic heuristic: assume it's a Component if its name ends with "Component" (case insensitive)
-                        # or if its name is exactly "component". This avoids false positives on things like `factory.createObject(...)`.
-                        # A better check would require resolving the identifier's type, but since we don't
-                        # have semantic analysis, this covers common patterns like `myComponent.createObject(...)`.
-                        receiver_name = receiver.text.lower()
-                        if receiver_name.endswith(b'component'):
+                        # Match if the receiver is a known Component ID
+                        if receiver.text in known_components:
                             is_component = True
 
                     if not is_component:
-                        # Skip if receiver doesn't look like a component
+                        # Skip if receiver doesn't resolve to a known component id
                         for child in node.children:
                             visit(child)
                         return
