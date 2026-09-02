@@ -1,14 +1,10 @@
 # `qt-kde-lint-context-menu-mutable-context`
 
-Investigate whether a useful Qt rule can detect deferred UI actions whose callback reads mutable transient context from an owning object instead of snapshotting the value that the action was created for.
-
-## What is diagnosed
-
-This issue identifies the pattern where an event handler (like `contextMenuEvent` or a hit-test result slot) assigns a context-specific value to a member variable, and then connects a `QAction::triggered` signal to a deferred callback (lambda or slot) that reads this member variable.
+Warns when a deferred UI action callback reads a mutable member variable that was recently assigned a value from a transient context (such as a context-menu hit test), instead of snapshotting the value.
 
 ## Why
 
-Context-menu construction often updates some mutable member (such as `mCurrentUrl` from a hit test). If an action's `triggered` callback reads that member instead of capturing its value at the time the menu was built, it risks reading stale data. This occurs because `triggered` is deferred until after the menu event loop finishes, and the mutable member could be overwritten by subsequent hit tests, other UI events, or a second context menu invocation before the first action executes.
+Context-menu construction often updates some mutable member (such as `mCurrentUrl` from a hit test). If an action's `triggered` callback reads that member instead of capturing its value at the time the menu was built, it risks reading stale data. This occurs because the user-triggered action executes later than the context-producing code and depends on mutable shared state that may no longer represent the action's intended context.
 
 Typical bug shape:
 
@@ -41,27 +37,20 @@ Moderately general: Qt event-driven UI code, especially context menus / hit test
 
 ## Existing tooling
 
-No existing built-in clang-tidy or Clazy checks adequately identify this specific deferred context-menu pattern.
+No existing built-in clang-tidy or Clazy checks adequately identify this specific deferred context-menu pattern. A naive check for reading any member via `this` produces unacceptable false positives for stable state access.
 
-## Precision boundaries and False Positives
+## Implemented Rule Boundaries
 
-A naive rule such as “QAction-triggered lambdas must not read members” is unusably noisy. It flags perfectly legitimate callbacks such as `[this] { use(mPersistentSetting); }`, where the member is stable state and has nothing to do with transient context-menu/hit-test state.
+The declarative rule specifically targets the correlation of the transient assignment and the subsequent deferred read. It will emit a warning when:
 
-A high-precision formulation requires distinguishing between "stable state" and "transient state". This likely requires data-flow analysis to ensure:
+1. A `QAction::triggered` signal is connected to a lambda or slot.
+2. The callback reads a specific member variable.
+3. That *same* member variable was assigned a value within the surrounding function scope of the `connect` call.
 
-1. an action is created/inserted while handling a context-menu or hit-test result;
-2. a member variable is assigned a value from this transient context within the same scope;
-3. a callback is deferred until `QAction::triggered`;
-4. the callback reads that specific mutable member whose value was just assigned;
-5. no value snapshot is captured by the callback.
+The rule successfully ignores stable state (member variables read in callbacks that were *not* assigned in the local transient scope) and unrelated member assignments.
 
-## Technical Limitation and Proposed Architecture Change
-
-Because this requires real data-flow (tracking member assignments vs reads across scopes) and cannot be accurately expressed as a high-precision declarative `clang-query` AST matcher, this issue is kept as mined evidence and cannot be implemented as a JSON rule. Attempts to use AST matchers either produce massive false positives (flagging all member accesses) or miss the canonical member-slot form entirely.
-
-Following `docs/ARCHITECTURE.md`, this rule must be implemented at the compiled custom-check layer. However, the repository currently lacks the infrastructure for compiled checks.
-
-**Proposed Architecture Change:** To support precise static rules like this one, the repository needs a CMake build system configured against LLVM/Clang development headers to build custom clang-tidy plugins (`.so` or `.dll`). The testing scripts would then need to be updated to use the `-load` parameter to load these plugins. Until this machinery is established, this rule remains documented but unimplemented.
+**Limitations**:
+- Because it is a structural AST matcher, it detects assignments and reads within the same surrounding function declaration. More complex cross-function data-flow paths might not be caught by this declarative subset, but the rule catches the primary motivated defect shape with high precision.
 
 ## Repair direction
 
