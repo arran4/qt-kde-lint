@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: Install dependencies
-        run: pip install tree-sitter tree-sitter-qmljs
+        run: pip install -r requirements-qml.txt
       - name: Test QML declarative rules
         run: python3 tools/test_qml_rules.py
 

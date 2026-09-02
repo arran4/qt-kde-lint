@@ -38,6 +38,29 @@ def check_qml(filepath):
                         break
 
                 if prop_ident and prop_ident.text == b'createObject':
+                    # Check receiver
+                    receiver = None
+                    for child in member_expr.children:
+                        if child.type == 'identifier':
+                            receiver = child
+                            break
+
+                    is_component = False
+                    if receiver:
+                        # Simplistic heuristic: assume it's a Component if its name ends with "Component" (case insensitive)
+                        # or if its name is exactly "component". This avoids false positives on things like `factory.createObject(...)`.
+                        # A better check would require resolving the identifier's type, but since we don't
+                        # have semantic analysis, this covers common patterns like `myComponent.createObject(...)`.
+                        receiver_name = receiver.text.lower()
+                        if receiver_name.endswith(b'component'):
+                            is_component = True
+
+                    if not is_component:
+                        # Skip if receiver doesn't look like a component
+                        for child in node.children:
+                            visit(child)
+                        return
+
                     # Now check arguments
                     args = None
                     for child in node.children:

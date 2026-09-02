@@ -59,16 +59,16 @@ def main() -> int:
 
         for source in bad:
             result = run_fixture(args.linter, source)
-            if marker not in result.stdout:
+            if marker not in result.stdout or result.returncode == 0:
                 failures.append(
-                    f"{rule_name}: {source} did not emit {marker}\n--- qml_linter output ---\n{result.stdout}"
+                    f"{rule_name}: {source} did not emit {marker} or did not exit with error (exit code {result.returncode})\n--- qml_linter output ---\n{result.stdout}\n{result.stderr}"
                 )
 
         for source in good:
             result = run_fixture(args.linter, source)
-            if marker in result.stdout:
+            if marker in result.stdout or result.returncode != 0:
                 failures.append(
-                    f"{rule_name}: {source} unexpectedly emitted {marker}\n--- qml_linter output ---\n{result.stdout}"
+                    f"{rule_name}: {source} unexpectedly emitted {marker} or failed (exit code {result.returncode})\n--- qml_linter output ---\n{result.stdout}\n{result.stderr}"
                 )
 
     if failures:

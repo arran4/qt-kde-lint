@@ -36,11 +36,15 @@ See [`docs/RULE_AUTHORING.md`](docs/RULE_AUTHORING.md) for the contract.
 
 ## Local development
 
-LLVM/clang-tidy 23 or newer with query-based custom checks enabled is required.
+LLVM/clang-tidy 23 or newer with query-based custom checks enabled is required for C++ rules.
+
+For QML rules, Python 3 dependencies in `requirements-qml.txt` are required.
 
 ```sh
 python3 tools/build_config.py --output build/.clang-tidy
 python3 tools/test_rules.py --clang-tidy clang-tidy-23
+pip install -r requirements-qml.txt
+python3 tools/test_qml_rules.py
 ```
 
 Query-based custom checks currently require `--experimental-custom-checks`. The CI workflow pins the intended clang-tidy major rather than relying on the GitHub runner default.
