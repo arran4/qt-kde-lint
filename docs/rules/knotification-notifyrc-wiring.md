@@ -48,7 +48,7 @@ Project-checker confidence: **high** for literal event IDs and repository-owned 
 3. Require a matching `[Event/<id>]` section for each literal event used in code.
 4. Optionally detect stale event sections never referenced by code (informational only; events may be triggered elsewhere).
 5. Verify the `.notifyrc` file is installed in the correct desktop location (e.g. via `${KDE_INSTALL_KNOTIFYRCDIR}` or the current KF6 data location conventions). A `.notifyrc` embedded only as a Qt resource should not be considered equivalent desktop wiring, as resource-based lookup is primarily an Android-specific case.
-6. Cross-check explicit `KNotification::setComponentName()` and literal `componentName` arguments passed to static `KNotification::event(...)` calls with the notification metadata/application identity when determinable. Ensure the event is checked against the `.notifyrc` for the resolved component, not automatically against the current application's metadata.
+6. Resolve notification component identity according to the actual `KNotification` API used, including overload-specific defaults when `componentName` is omitted (e.g., in `KNotification::event(...)`). It must not blindly assume that an omitted component name always means the current application. Only associate an event with a `.notifyrc` once the component can be determined unambiguously; otherwise avoid a hard error.
 
 Dynamic event IDs should not be guessed.
 
