@@ -20,6 +20,11 @@ def load_rules(paths: Iterable[Path]) -> list[dict]:
     names: set[str] = set()
 
     for path in sorted(paths):
+        # Skip directories and non-JSON files. In our setup QML rules are in rules/qml/*.json
+        # The glob already handles *.json, but we can specifically filter out files in subdirectories if we only want C++ rules here.
+        # But wait, QML rules shouldn't even be parsed for clang-tidy.
+        # It's better to just skip any file that isn't directly in the provided directory.
+
         try:
             rule = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -86,8 +91,11 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    # We only want to load C++ rules from rules/*.json.
+    # QML rules will be in rules/qml/ and shouldn't be included in clang-tidy config.
     try:
-        rules = load_rules(args.rules_dir.glob("*.json"))
+        paths = [p for p in args.rules_dir.glob("*.json") if p.is_file() and p.parent == args.rules_dir]
+        rules = load_rules(paths)
     except RuleError as exc:
         parser.error(str(exc))
 

@@ -7,8 +7,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Import the actual linter logic so we don't duplicate
-import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qml_linter import QML_RULES
@@ -42,7 +40,8 @@ def main() -> int:
 
         for source in bad:
             content = source.read_text(encoding="utf-8")
-            if not checker(content):
+            issues = checker(content)
+            if not issues:
                 failures.append(f"{name}: {source} did not emit warning")
 
         for source in good:

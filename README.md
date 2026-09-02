@@ -28,9 +28,10 @@ See [`docs/RULE_AUTHORING.md`](docs/RULE_AUTHORING.md) for the contract.
 
 ## Layout
 
-- `rules/` — declarative custom-check definitions, one JSON file per rule. JSON is used because it can be validated with Python's standard library and emitted as YAML-compatible clang-tidy configuration.
+- `rules/` — declarative C++ custom-check definitions, one JSON file per rule. JSON is used because it can be validated with Python's standard library and emitted as YAML-compatible clang-tidy configuration.
+- `rules/qml/` — declarative QML check definitions, one JSON file per rule.
 - `tests/<rule-name>/` — positive and negative regression fixtures for each rule.
-- `tools/build_config.py` — validates rules and generates a clang-tidy configuration.
+- `tools/build_config.py` — validates C++ rules and generates a clang-tidy configuration.
 - `tools/test_rules.py` — runs every C++ rule's regression fixtures.
 - `tools/qml_linter.py` — lints QML files directly for QML rules.
 - `tools/test_qml.py` — runs QML regression fixtures.
