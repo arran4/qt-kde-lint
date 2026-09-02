@@ -10,7 +10,7 @@ Rule definitions use a stable `Name` beginning with `qt-kde-lint-`, for example:
 qt-kde-lint-qobject-parent
 ```
 
-clang-tidy exposes query-based checks with the `custom-` module prefix, so the emitted check name is:
+clang-tidy exposes C++ query-based checks with the `custom-` module prefix, so the emitted check name is:
 
 ```text
 custom-qt-kde-lint-qobject-parent
@@ -18,9 +18,9 @@ custom-qt-kde-lint-qobject-parent
 
 Do not rename a published rule merely to improve wording. A stable diagnostic identifier is useful to CI suppressions, documentation, humans, and coding agents.
 
-## Definition
+## Definition (C++)
 
-A rule file is `rules/<Name>.json` with the shape:
+A C++ rule file is `rules/<Name>.json` with the shape:
 
 ```json
 {
@@ -38,16 +38,20 @@ A rule file is `rules/<Name>.json` with the shape:
 
 Additional `Note` diagnostics are encouraged when pointing at a related declaration or ownership/lifetime participant materially improves the explanation.
 
+## Definition (QML)
+
+QML rules do not use the `rules/*.json` format. They are implemented purely as Python functions registered inside `tools/qml_linter.py`. The same stable naming prefix (`qt-kde-lint-`) applies. The diagnostic message must be defined alongside the rule function.
+
 ## Required tests
 
 Each rule gets `tests/<Name>/` containing at minimum:
 
-- `bad.cpp` — must emit `[custom-<Name>]`;
-- `good.cpp` — must not emit that diagnostic.
+- `bad.cpp` (or `bad*.qml` for QML rules) — must emit a warning for the diagnostic;
+- `good.cpp` (or `good*.qml` for QML rules) — must not emit that diagnostic.
 
-Use minimal local type declarations where possible instead of making the regression suite depend on a complete Qt/KDE SDK. The matcher should rely on semantic properties represented in the AST rather than filesystem-specific header paths whenever practical.
+Use minimal local type declarations where possible instead of making the regression suite depend on a complete Qt/KDE SDK. The C++ matcher should rely on semantic properties represented in the AST rather than filesystem-specific header paths whenever practical.
 
-If one bad/good pair does not describe an important boundary, add numbered fixtures (`bad-2.cpp`, `good-2.cpp`, etc.).
+If one bad/good pair does not describe an important boundary, add numbered or named fixtures (e.g., `bad_direct.qml`, `good_guard.qml`).
 
 ## Evidence
 
@@ -77,4 +81,4 @@ Prefer precision over recall. Do not merge a rule with obvious false positives m
 
 ## Existing-tool check
 
-Before merging, compare against current clang-tidy and Clazy checks. If an existing rule catches the same defect with comparable precision and diagnostics, enable or document that rule rather than adding a duplicate here.
+Before merging, compare against current clang-tidy and Clazy (or qmllint for QML) checks. If an existing rule catches the same defect with comparable precision and diagnostics, enable or document that rule rather than adding a duplicate here.

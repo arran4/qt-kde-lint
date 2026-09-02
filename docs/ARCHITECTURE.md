@@ -26,10 +26,10 @@ The upstream feature is experimental, so this repository pins a tested LLVM majo
 
 ## Rule definition format
 
-Each `rules/*.json` file (for C++) or `rules/qml/*.json` file (for QML) is one object corresponding to an entry in clang-tidy's `CustomChecks` array. Required fields are:
+Each `rules/*.json` file (for C++ rules) is one object corresponding to an entry in clang-tidy's `CustomChecks` array. Required fields are:
 
 - `Name` — must begin with `qt-kde-lint-`;
-- `Query` — clang-query text containing a `match` expression (for C++ rules, dummy for QML rules);
+- `Query` — clang-query text containing a `match` expression;
 - `Diagnostic` — one or more bound-node diagnostics, including at least one warning.
 
 The generated clang-tidy check name is `custom-<Name>`.
@@ -44,4 +44,4 @@ Compiled checks should remain out-of-tree unless/until an upstream destination i
 
 ## Non-C++ rules
 
-Qt/KDE projects also contain CMake, QML, desktop files, AppStream metadata, DBus XML, KConfig data, and CI configuration. These should not be forced through clang-tidy. If recurring mistakes are found there, this repository may gain thin format-specific rule runners while retaining the same principles: stable rule IDs, high precision, explanatory diagnostics, and positive/negative regression tests. For QML rules, they are placed in `rules/qml/` to separate them from C++ AST match rules.
+Qt/KDE projects also contain CMake, QML, desktop files, AppStream metadata, DBus XML, KConfig data, and CI configuration. These should not be forced through clang-tidy. If recurring mistakes are found there, this repository may gain thin format-specific rule runners while retaining the same principles: stable rule IDs, high precision, explanatory diagnostics, and positive/negative regression tests. For QML rules, they are implemented purely in Python via `tools/qml_linter.py` rather than using the C++ JSON schema metadata registry.

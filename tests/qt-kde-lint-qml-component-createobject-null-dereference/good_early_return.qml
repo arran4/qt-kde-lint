@@ -3,11 +3,9 @@ import QtQuick
 Item {
     Component { id: comp; Rectangle {} }
 
-    function test() {
+    function test1() {
         const menu = comp.createObject(parent);
-        if (menu) {
-            doSomething();
-        }
+        if (!menu) return;
         menu.popup();
     }
 }
