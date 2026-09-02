@@ -22,6 +22,6 @@ Remove the `id` key. If you need to refer to the dynamically created instance la
 
 This rule is implemented in Python (`tools/qml_linter.py`) using `tree-sitter` and `tree-sitter-qmljs` to parse the QML AST.
 
-*Heuristic:* To avoid false positives on unrelated objects that happen to have a `createObject` method (like a custom `factory.createObject`), the linter employs a conservative heuristic: it only flags calls where the receiver's name ends in `Component` or `component` (e.g., `linkMenuComponent`, `component`).
+*Heuristic:* To avoid false positives on unrelated objects that happen to have a `createObject` method (like a custom `factory.createObject`), the linter employs a conservative two-pass AST collection strategy. First, it collects the IDs of all inline `Component { id: ... }` object definitions within the file. Then, it only flags `.createObject(...)` calls whose receiver resolves to one of those explicitly collected `Component` IDs. Uncertain or dynamic component-producing expressions are intentionally skipped to preserve the repository's precision-first policy.
 
-*Existing Tooling:* The standard `qmllint` (as of Qt 6) was tested and does **not** currently diagnose this issue. `qmllint` does not flag `id` within a property map passed to `createObject`, validating the need for this custom lint rule.
+*Existing Tooling:* `qmllint 1.0` (as distributed with Qt 6.4.2) was explicitly tested and does **not** currently diagnose this issue. `qmllint` does not flag `id` within a property map passed to `createObject`, validating the need for this custom lint rule.
