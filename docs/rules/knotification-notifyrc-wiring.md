@@ -47,14 +47,15 @@ Project-checker confidence: **high** for literal event IDs and repository-owned 
 2. Find the applicable `.notifyrc` file(s).
 3. Require a matching `[Event/<id>]` section for each literal event used in code.
 4. Optionally detect stale event sections never referenced by code (informational only; events may be triggered elsewhere).
-5. Verify the `.notifyrc` file is included in the build/install metadata.
-6. Cross-check explicit `KNotification::setComponentName()` with the notification metadata/application identity when determinable.
+5. Verify the `.notifyrc` file is installed in the correct desktop location (e.g. via `${KDE_INSTALL_KNOTIFYRCDIR}` or the current KF6 data location conventions). A `.notifyrc` embedded only as a Qt resource should not be considered equivalent desktop wiring, as resource-based lookup is primarily an Android-specific case.
+6. Cross-check explicit `KNotification::setComponentName()` and literal `componentName` arguments passed to static `KNotification::event(...)` calls with the notification metadata/application identity when determinable. Ensure the event is checked against the `.notifyrc` for the resolved component, not automatically against the current application's metadata.
 
 Dynamic event IDs should not be guessed.
 
 ## Precision
 
-Only report hard errors when both sides are under project control and the relationship is unambiguous. Libraries may intentionally send notifications against another component's metadata, and generated/dynamic event names may not be enumerable statically.
+Only report hard errors when both sides are under project control and the relationship is unambiguous. Libraries may intentionally send notifications against another component's metadata, and generated/dynamic event names may not be enumerable statically. Do not guess or emit a hard error if component/event identity is dynamic or ambiguous.
+Do not incorrectly accept a desktop application whose `.notifyrc` exists only as an unusable Qt resource.
 
 ## Existing tooling
 
@@ -68,4 +69,4 @@ This is cross-file KDE metadata validation, not something clang-tidy/Clazy norma
 
 > KNotification event AuthError is used in C++ but no [Event/AuthError] entry exists in the installed notification metadata for this component.
 
-> This .notifyrc defines notification events, but the file is not installed/bundled by the current build configuration.
+> This .notifyrc defines notification events, but the file is only embedded as a Qt resource, not installed to the required desktop location for KNotifications discovery.
