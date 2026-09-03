@@ -22,6 +22,18 @@ jobs:
       - name: Validate and generate rule configuration
         run: python3 tools/build_config.py --output build/.clang-tidy
 
+  declarative-qml-rules:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: pip install -r requirements-qml.txt
+      - name: Test QML declarative rules
+        run: python3 tools/test_qml_rules.py
+
   declarative-rules:
     runs-on: ubuntu-24.04
     steps:
