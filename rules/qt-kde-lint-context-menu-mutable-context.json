@@ -1,0 +1,11 @@
+{
+  "Name": "qt-kde-lint-context-menu-mutable-context",
+  "Query": "match callExpr( callee(functionDecl(hasName(\"connect\"))), hasArgument( 1, unaryOperator( hasOperatorName(\"&\"), hasUnaryOperand( declRefExpr( to( cxxMethodDecl( hasName(\"triggered\"), ofClass(hasName(\"QAction\")) ) ) ) ) ) ), hasAncestor( functionDecl( hasAnyName(\"contextMenuEvent\", \"slotHitTestResult\", \"slotContextMenu\"), hasDescendant( stmt( anyOf( cxxOperatorCallExpr( hasOverloadedOperatorName(\"=\"), hasLHS( memberExpr( member(fieldDecl().bind(\"assigned_field\")) ) ), hasRHS( expr( anyOf( ignoringParenImpCasts(declRefExpr(to(parmVarDecl()))), hasDescendant(declRefExpr(to(parmVarDecl()))) ) ) ) ), binaryOperator( hasOperatorName(\"=\"), hasLHS( memberExpr( member(fieldDecl().bind(\"assigned_field\")) ) ), hasRHS( expr( anyOf( ignoringParenImpCasts(declRefExpr(to(parmVarDecl()))), hasDescendant(declRefExpr(to(parmVarDecl()))) ) ) ) ) ) ) ) ) ), anyOf( hasArgument( 3, lambdaExpr( has( cxxRecordDecl( has( cxxMethodDecl( hasBody( hasDescendant( memberExpr( member( fieldDecl( equalsBoundNode(\"assigned_field\") ) ) ) ) ) ) ) ) ) ) ), hasArgument( 3, unaryOperator( hasOperatorName(\"&\"), hasUnaryOperand( declRefExpr( to( cxxMethodDecl( hasBody( hasDescendant( memberExpr( member( fieldDecl( equalsBoundNode(\"assigned_field\") ) ) ) ) ) ) ) ) ) ) ) ) ).bind(\"problem\")",
+  "Diagnostic": [
+    {
+      "BindName": "problem",
+      "Message": "Deferred context-menu callback reads mutable transient context from an owning object instead of snapshotting the value. Consider capturing the specific value by value in the lambda.",
+      "Level": "Warning"
+    }
+  ]
+}
