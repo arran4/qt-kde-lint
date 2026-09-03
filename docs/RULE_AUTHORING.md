@@ -78,3 +78,13 @@ Prefer precision over recall. Do not merge a rule with obvious false positives m
 ## Existing-tool check
 
 Before merging, compare against current clang-tidy and Clazy checks. If an existing rule catches the same defect with comparable precision and diagnostics, enable or document that rule rather than adding a duplicate here.
+
+## QML rules
+
+QML rules are implemented in Python in `tools/qml_linter.py` rather than JSON.
+
+They must follow these architecture constraints:
+1. `tree-sitter-qmljs` is the canonical parsing path for QML files.
+2. Rules must be registered with the `@register_rule` decorator and take a `QmlLintContext` object to reuse shared AST facilities.
+3. Rules should never create parallel regex parsers or read file strings manually. Use tree-sitter AST traversal.
+4. Each rule still requires `bad.qml` and `good.qml` tests in `tests/qml/<Name>/`.

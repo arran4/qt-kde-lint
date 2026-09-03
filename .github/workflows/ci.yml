@@ -31,6 +31,8 @@ jobs:
           python-version: '3.x'
       - name: Install dependencies
         run: pip install -r requirements-qml.txt
+      - name: Test QML utilities
+        run: python3 -m unittest discover -s tests/qml_harness -v
       - name: Test QML declarative rules
         run: python3 tools/test_qml_rules.py
 

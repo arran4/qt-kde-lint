@@ -44,4 +44,8 @@ Compiled checks should remain out-of-tree unless/until an upstream destination i
 
 ## Non-C++ rules
 
-Qt/KDE projects also contain CMake, QML, desktop files, AppStream metadata, DBus XML, KConfig data, and CI configuration. These should not be forced through clang-tidy. If recurring mistakes are found there, this repository may gain thin format-specific rule runners while retaining the same principles: stable rule IDs, high precision, explanatory diagnostics, and positive/negative regression tests.
+Qt/KDE projects also contain CMake, QML, desktop files, AppStream metadata, DBus XML, KConfig data, and CI configuration. These should not be forced through clang-tidy.
+
+For QML, this repository provides a dedicated linter in `tools/qml_linter.py` backed by `tree-sitter-qmljs`. It parses files into an AST and exposes a shared `QmlLintContext` so declarative or programmatic rules can traverse the QML semantics directly without relying on unreliable regex heuristics.
+
+Other file formats may gain thin format-specific rule runners over time while retaining the same principles: stable rule IDs, high precision, explanatory diagnostics, and positive/negative regression tests.
