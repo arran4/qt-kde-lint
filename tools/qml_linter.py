@@ -9,6 +9,7 @@ class QmlLintContext:
         self.filepath = filepath
         self.tree = tree
         self.known_components = set()
+        self._components_resolved = False
         self.issues = []
 
     def walk(self, node, callback):
@@ -19,6 +20,9 @@ class QmlLintContext:
 
     def find_components(self):
         """Find and collect known Component IDs in the AST."""
+        if self._components_resolved:
+            return self.known_components
+
         def collect_components(node):
             if node.type == 'ui_object_definition':
                 # Check if this object is a Component
@@ -49,6 +53,7 @@ class QmlLintContext:
                                                 self.known_components.add(exp_child.text)
 
         self.walk(self.tree.root_node, collect_components)
+        self._components_resolved = True
         return self.known_components
 
     def report_issue(self, node, rule_name, message):
