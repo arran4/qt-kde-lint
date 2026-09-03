@@ -5,7 +5,7 @@ import sys
 import os
 
 # Add tools directory to path to import QmlLintContext
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tools')))
 from qml_linter import QmlLintContext
 
 class TestQmlLinterUtils(unittest.TestCase):
