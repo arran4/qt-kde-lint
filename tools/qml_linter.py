@@ -90,9 +90,12 @@ class QmlLintContext:
         self._components_resolved = True
         return self.known_components
 
-
     def get_local_variable_declaration(self, node):
-        '''Extract the variable name and assigned value from a lexical declaration.'''
+        """Extract the variable name and assigned value from a lexical declaration.
+
+        Note: If a declaration contains multiple variables (e.g. `let x = 1, y = 2`),
+        this helper currently only returns the first one.
+        """
         if node.type == 'lexical_declaration':
             for child in node.children:
                 if child.type == 'variable_declarator':
@@ -101,33 +104,45 @@ class QmlLintContext:
                     for var_child in child.children:
                         if var_child.type == 'identifier':
                             ident = var_child
-                        elif var_child.type != '=' and var_child.type != 'identifier':
+                        elif var_child.type == '=':
+                            continue
+                        else:
                             val = var_child
                     if ident:
                         return ident, val
         return None, None
 
+
+
     def get_assignment_expression(self, node):
-        '''Extract the left and right side of an assignment expression.'''
+        """Extract the left and right side of a plain assignment expression.
+
+        Returns (left_node, right_node) if this is a plain '=' assignment.
+        Returns (None, None) for compound assignments (e.g. '+=') or non-assignments.
+        """
+        if node.type == 'augmented_assignment_expression':
+            return None, None
+
         if node.type == 'assignment_expression':
             left = None
             right = None
+            is_plain_assignment = False
             for child in node.children:
                 if child.type == '=':
+                    is_plain_assignment = True
                     continue
+                # If we hit an operator like '+=' or '-=', it's not a plain assignment
+                if child.type in ('+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '>>>=', '&=', '^=', '|='):
+                    return None, None
+
                 if not left:
                     left = child
                 else:
                     right = child
-            return left, right
+            if is_plain_assignment:
+                return left, right
         return None, None
 
-    def find_all(self, node, node_type, callback):
-        '''Walk block/lexical scope finding nodes of a specific type.'''
-        if node.type == node_type:
-            callback(node)
-        for child in node.children:
-            self.find_all(child, node_type, callback)
 
 
     def report_issue(self, node, rule_name, message):
