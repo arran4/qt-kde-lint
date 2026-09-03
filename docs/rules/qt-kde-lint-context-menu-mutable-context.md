@@ -1,10 +1,10 @@
 # `qt-kde-lint-context-menu-mutable-context`
 
-Warns when a deferred UI action callback reads a mutable member variable that was recently assigned a value from a transient context (such as a context-menu hit test), instead of snapshotting the value.
+Warns when a deferred UI action callback reads a mutable member variable that was recently assigned a value from a transient context source (such as a context-menu hit test parameter), instead of snapshotting the value.
 
 ## Why
 
-Context-menu construction often updates some mutable member (such as `mCurrentUrl` from a hit test). If an action's `triggered` callback reads that member instead of capturing its value at the time the menu was built, it risks reading stale data. This occurs because the user-triggered action executes later than the context-producing code and depends on mutable shared state that may no longer represent the action's intended context.
+Context-menu construction often updates some mutable member (such as `mCurrentUrl` from an event hit test). If an action's `triggered` callback reads that member instead of capturing its value at the time the menu was built, it risks reading stale data. This occurs because the user-triggered action executes later than the context-producing code and depends on mutable shared state that may no longer represent the action's intended context.
 
 Typical bug shape:
 
@@ -41,16 +41,17 @@ No existing built-in clang-tidy or Clazy checks adequately identify this specifi
 
 ## Implemented Rule Boundaries
 
-The declarative rule specifically targets the correlation of the transient assignment and the subsequent deferred read. It will emit a warning when:
+Because establishing the difference between stable and transient state requires data-flow analysis that declarative rules cannot express accurately, this rule targets a highly precise, deliberately narrow structural subset using AST matchers. It will emit a warning when all the following conditions are met within the same enclosing function:
 
-1. A `QAction::triggered` signal is connected to a lambda or slot.
-2. The callback reads a specific member variable.
-3. That *same* member variable was assigned a value within the surrounding function scope of the `connect` call.
+1. The enclosing function is a recognized context handler (e.g., `contextMenuEvent`, `slotHitTestResult`, `slotContextMenu`).
+2. A member variable is assigned a value derived from a parameter of that function (identifying a transient context source).
+3. A `QAction::triggered` signal is connected to a lambda or member-slot callback.
+4. The callback reads the *exact same* member variable that was assigned.
 
-The rule successfully ignores stable state (member variables read in callbacks that were *not* assigned in the local transient scope) and unrelated member assignments.
+The rule successfully ignores stable persistent state (member variables assigned without a parameter source or outside recognized handlers) and unrelated member assignments. It supports both lambda closures and canonical member-slot targets.
 
 **Limitations**:
-- Because it is a structural AST matcher, it detects assignments and reads within the same surrounding function declaration. More complex cross-function data-flow paths might not be caught by this declarative subset, but the rule catches the primary motivated defect shape with high precision.
+- The rule is explicitly narrow to avoid false positives (low recall, high precision). It relies on specific function names and parameter-derived assignments to identify transient context. If transient state is stored in a complex way across translation units, this declarative check will miss it.
 
 ## Repair direction
 
