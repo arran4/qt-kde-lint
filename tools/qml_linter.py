@@ -192,10 +192,23 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
     def always_returns(node):
         if node.type in ('return_statement', 'throw_statement', 'break_statement', 'continue_statement'):
             return True
-        if node.type == 'statement_block':
+        if node.type in ('statement_block', 'else_clause'):
             for c in node.children:
                 if always_returns(c):
                     return True
+        # If it's an if_statement, it always returns if BOTH branches always return
+        if node.type == 'if_statement':
+            cons = None
+            alt = None
+            for c in node.children:
+                if c.type not in ('if', 'else', 'parenthesized_expression', 'comment'):
+                    if cons is None:
+                        cons = c
+                    else:
+                        alt = c
+            if cons and alt:
+                return always_returns(cons) and always_returns(alt)
+            return False
         return False
 
     def is_shadowed(node, name):
@@ -297,17 +310,15 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                 for i in range(idx + 1, len(siblings)):
                                     sibling = siblings[i]
 
-                                    def find_refs(n, refs, is_top_level_sibling=False):
+                                    def find_refs(n, refs):
                                         if n.type in ('assignment_expression', 'augmented_assignment_expression'):
                                             left = n.children[0]
                                             if left.type == 'identifier' and left.text == var_name:
                                                 right = n.children[-1] if len(n.children) > 2 else None
                                                 if right:
                                                     find_refs(right, refs)
-                                                # ONLY stop if it's an unconditional reassignment at the top level
-                                                # of our statement block iteration. Otherwise, don't flag `stopped` for all siblings.
-                                                if is_top_level_sibling:
-                                                    refs['stopped'] = True
+
+                                                refs['stopped'] = True
                                                 return
 
                                         if n.type == 'if_statement':
@@ -333,7 +344,6 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                             expr = c
                                                             break
 
-                                                # Check for short-circuit && or || inside the condition
                                                 def safe_cond_derefs(cond_node):
                                                     if cond_node.type == 'binary_expression':
                                                         op_node = None
@@ -341,9 +351,7 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                             if c.type in ('&&', '||'): op_node = c
                                                         if op_node:
                                                             if op_node.type == '&&':
-                                                                # If left proves non-null, right is safe
                                                                 left_cond = cond_node.children[0]
-
                                                                 is_left_proves_non_null = False
                                                                 if left_cond.type == 'identifier' and left_cond.text == var_name:
                                                                     is_left_proves_non_null = True
@@ -360,12 +368,14 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     return False
 
                                                 if safe_cond_derefs(expr):
-                                                    # It's an && condition that makes the right-hand safe, and the consequence safe.
                                                     cond_status = 'proves_non_null'
-                                                    # Do not visit condition because it has a safe short-circuit
                                                 else:
-                                                    find_refs(cond, refs)
-                                                    if refs.get('stopped'): return
+                                                    cond_refs = {'unsafe_derefs': [], 'stopped': False}
+                                                    find_refs(cond, cond_refs)
+                                                    refs['unsafe_derefs'].extend(cond_refs['unsafe_derefs'])
+                                                    if cond_refs['stopped']:
+                                                        refs['stopped'] = True
+                                                        return
 
                                                 if cond_status == 'unknown':
                                                     if expr.type == 'identifier' and expr.text == var_name:
@@ -401,25 +411,74 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                                 elif op.type in ('!=', '!=='):
                                                                     cond_status = 'proves_non_null'
 
-                                            if cond_status == 'proves_non_null':
-                                                if alternative:
-                                                    find_refs(alternative, refs)
-                                                if alternative and always_returns(alternative):
-                                                    if is_top_level_sibling:
-                                                        refs['early_return'] = True
+                                            cons_refs = {'unsafe_derefs': [], 'stopped': False}
+                                            alt_refs = {'unsafe_derefs': [], 'stopped': False}
 
-                                            elif cond_status == 'proves_null':
-                                                if consequence:
-                                                    find_refs(consequence, refs)
-                                                if consequence and always_returns(consequence):
-                                                    if is_top_level_sibling:
-                                                        refs['early_return'] = True
+                                            cons_stops = False
+                                            alt_stops = False
 
+                                            if consequence:
+                                                if cond_status != 'proves_null': # Only visit if not known null
+                                                    find_refs(consequence, cons_refs)
+                                                else:
+                                                    # If it proves null, any derefs in consequence ARE unsafe
+                                                    find_refs(consequence, cons_refs)
+
+                                                if cons_refs['stopped'] or always_returns(consequence):
+                                                    cons_stops = True
                                             else:
-                                                if consequence:
-                                                    find_refs(consequence, refs)
-                                                if alternative:
-                                                    find_refs(alternative, refs)
+                                                if cond_status == 'proves_non_null':
+                                                    cons_stops = True # It's safe in consequence, but if consequence is empty, fallthrough is NOT safe
+                                                    cons_stops = False
+                                                    # wait, an empty consequence means it just falls through.
+
+                                            if alternative:
+                                                if cond_status != 'proves_non_null':
+                                                    find_refs(alternative, alt_refs)
+                                                else:
+                                                    find_refs(alternative, alt_refs) # It's known non-null in consequence, but null in alt, so alt derefs are unsafe
+
+                                                if alt_refs['stopped'] or always_returns(alternative):
+                                                    alt_stops = True
+                                            else:
+                                                # If there is no alternative, does the alternative stop?
+                                                if cond_status == 'proves_null':
+                                                    alt_stops = False # Wait, if (!menu) { menu = fallback; } else { /* no alt */ }. The fallthrough is safe? Yes.
+
+                                            # If cond_status is proves_non_null, derefs in consequence are SAFE.
+                                            # If cond_status is proves_null, derefs in alternative are SAFE.
+
+                                            if cond_status == 'proves_non_null':
+                                                # Consequence derefs are safe, so clear them.
+                                                cons_refs['unsafe_derefs'] = []
+                                                if always_returns(consequence) or cons_refs['stopped']:
+                                                    cons_stops = True
+                                            elif cond_status == 'proves_null':
+                                                # Alternative derefs are safe (if it exists)
+                                                alt_refs['unsafe_derefs'] = []
+                                                if consequence and (always_returns(consequence) or cons_refs['stopped']):
+                                                    cons_stops = True
+                                                if alternative and (always_returns(alternative) or alt_refs['stopped']):
+                                                    alt_stops = True
+
+                                            refs['unsafe_derefs'].extend(cons_refs['unsafe_derefs'])
+                                            refs['unsafe_derefs'].extend(alt_refs['unsafe_derefs'])
+
+                                            # If BOTH branches stop, the whole if stops fallthrough
+                                            if (consequence and cons_stops) and (alternative and alt_stops):
+                                                refs['stopped'] = True
+                                            elif cond_status == 'proves_null' and consequence and cons_stops and not alternative:
+                                                # if (!menu) return;  (no alternative)
+                                                # BOTH branches stop because if menu is null, it returns.
+                                                # But what if menu is NOT null? Then it falls through safely.
+                                                # If it falls through safely, then `refs['stopped']` should be True?
+                                                # "stopped" means we stop looking for unsafe derefs.
+                                                # Yes! `refs['stopped'] = True` means we don't flag any siblings downstream.
+                                                refs['stopped'] = True
+                                            elif cond_status == 'proves_non_null' and alternative and alt_stops and not consequence:
+                                                # if (menu) {} else { return; }
+                                                refs['stopped'] = True
+
                                             return
 
                                         if n.type == 'member_expression':
@@ -439,17 +498,24 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                         for child in n.children:
                                             find_refs(child, refs)
+                                            if refs.get('stopped'):
+                                                break
 
-                                    refs = {'unsafe_derefs': [], 'early_return': False, 'stopped': False}
+                                    refs = {'unsafe_derefs': [], 'stopped': False}
 
-                                    # We treat a sibling as a top-level execution path relative to the declaration
+                                    # Sibling evaluation
                                     if sibling.type == 'expression_statement' and sibling.children[0].type in ('assignment_expression', 'augmented_assignment_expression'):
-                                        find_refs(sibling.children[0], refs, is_top_level_sibling=True)
+                                        # If the sibling is a top level assignment statement, evaluate the RHS but then mark stopped=True at the end
+                                        left = sibling.children[0].children[0]
+                                        if left.type == 'identifier' and left.text == var_name:
+                                            right = sibling.children[0].children[-1] if len(sibling.children[0].children) > 2 else None
+                                            if right:
+                                                find_refs(right, refs)
+                                            refs['stopped'] = True
+                                        else:
+                                            find_refs(sibling, refs)
                                     else:
-                                        find_refs(sibling, refs, is_top_level_sibling=True)
-
-                                    if refs['early_return'] or refs['stopped']:
-                                        break
+                                        find_refs(sibling, refs)
 
                                     if refs['unsafe_derefs']:
                                         context.report_issue(
@@ -457,6 +523,9 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                             "qt-kde-lint-qml-component-createobject-null-dereference",
                                             "Component.createObject() can return null. Check the result (or use a null-safe operation) before accessing the dynamically created object."
                                         )
+                                        break
+
+                                    if refs['stopped']:
                                         break
 
 
