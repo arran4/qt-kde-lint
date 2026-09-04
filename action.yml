@@ -1,0 +1,50 @@
+name: 'qt-kde-lint'
+description: 'Run qt-kde-lint checks on C++ and/or QML sources'
+
+inputs:
+  build-directory:
+    description: 'Build directory containing compile_commands.json (required for C++)'
+    required: false
+  cpp-paths:
+    description: 'Space-separated C++ source paths to analyze'
+    required: false
+  qml-paths:
+    description: 'Space-separated QML source paths to analyze'
+    required: false
+  clang-tidy:
+    description: 'clang-tidy executable to use (must be version 23 or newer)'
+    required: false
+    default: 'clang-tidy-23'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure Python QML parser dependencies are installed
+      if: inputs.qml-paths != ''
+      run: pip install -r ${{ github.action_path }}/requirements-qml.txt
+      shell: bash
+
+    - name: Run qt-kde-lint
+      run: |
+        ARGS=()
+        if [ -n "${{ inputs.build-directory }}" ]; then
+          ARGS+=(--build-dir "${{ inputs.build-directory }}")
+        fi
+        if [ -n "${{ inputs.clang-tidy }}" ]; then
+          ARGS+=(--clang-tidy "${{ inputs.clang-tidy }}")
+        fi
+
+        # Read space-separated paths safely using read -r -a
+        if [ -n "${{ inputs.cpp-paths }}" ]; then
+          ARGS+=(--cpp-paths)
+          read -r -a CPP_ARRAY <<< "${{ inputs.cpp-paths }}"
+          ARGS+=("${CPP_ARRAY[@]}")
+        fi
+        if [ -n "${{ inputs.qml-paths }}" ]; then
+          ARGS+=(--qml-paths)
+          read -r -a QML_ARRAY <<< "${{ inputs.qml-paths }}"
+          ARGS+=("${QML_ARRAY[@]}")
+        fi
+
+        python3 ${{ github.action_path }}/tools/run.py "${ARGS[@]}"
+      shell: bash

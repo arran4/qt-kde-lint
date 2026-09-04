@@ -64,52 +64,28 @@ Query-based custom checks currently require `--experimental-custom-checks`. The 
 
 ## GitHub Actions integration
 
-`qt-kde-lint` is intended to run as an additional static-analysis pass in the same CI pipeline that already builds Qt/KDE code. It should **not** replace the project's normal compiler warnings, `.clang-tidy`, Clazy, `cppcheck`, formatting, build, or tests.
+The easiest way to run `qt-kde-lint` in GitHub Actions is to use the provided composite action. It can run both C++ and QML checks as an additional static-analysis pass. It should **not** replace the project's normal compiler warnings, `.clang-tidy`, Clazy, `cppcheck`, formatting, build, or tests.
 
-The instructions below are intended to work with common Qt/KDE GitHub Actions layouts, including:
-
-- a dedicated C++/Qt lint job that already creates `compile_commands.json` and runs clang-tidy;
-- a combined build/test job where static analysis is currently limited to formatting or `cppcheck`;
-- container-based jobs using a KDE/openSUSE, Debian, Ubuntu, or similar build environment.
-
-A consumer workflow needs three things:
-
+A consumer workflow needs three things for C++ checks:
 1. a CMake compilation database generated with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`;
 2. clang-tidy 23 or newer, because query-based custom checks are currently experimental;
-3. a checkout of this repository so `tools/build_config.py` can generate the custom-check configuration.
-
-The generated configuration intentionally enables only `custom-qt-kde-lint-*`. Run it as a **second clang-tidy pass** rather than supplying it to the project's normal clang-tidy invocation, otherwise the generated `Checks: -*,custom-qt-kde-lint-*` setting would replace the project's normal check selection.
+3. using the `qt-kde-lint` action as a step.
 
 ### Minimal addition to an existing Qt/C++ lint job
 
 If a lint job already configures the project with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, add the following after configuration and after any existing clang-tidy/Clazy checks:
 
 ```yaml
-      - name: Check out qt-kde-lint
-        uses: actions/checkout@v4
-        with:
-          repository: arran4/qt-kde-lint
-          # Pin a release tag or commit for reproducible CI once releases exist.
-          ref: main
-          path: .qt-kde-lint
-
-      - name: Generate qt-kde-lint configuration
-        run: |
-          python3 .qt-kde-lint/tools/build_config.py \
-            --rules-dir .qt-kde-lint/rules \
-            --output build/qt-kde-lint.clang-tidy
-
       - name: Run qt-kde-lint
-        run: |
-          clang-tidy-23 --version
-          find src tests bench -type f \
-            \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
-            -print0 2>/dev/null \
-            | xargs -0 -r clang-tidy-23 \
-                --experimental-custom-checks \
-                --config-file=build/qt-kde-lint.clang-tidy \
-                -p build
+        uses: arran4/qt-kde-lint@v1
+        with:
+          build-directory: build
+          cpp-paths: src tests bench
+          qml-paths: src
+          clang-tidy: clang-tidy-23
 ```
+
+The action will handle generating the configuration and invoking `clang-tidy` as a second pass.
 
 Adjust the source directories for the project. Running translation units from the compilation database is sufficient to analyze code in included headers as well; there is normally no need to invoke clang-tidy separately on every header.
 
@@ -138,25 +114,12 @@ A workflow that already runs clang-tidy should normally look conceptually like t
       - name: Existing clang-tidy and Clazy checks
         run: run-clang-tidy -p build src tests
 
-      - name: Check out qt-kde-lint
-        uses: actions/checkout@v4
+      - name: Run qt-kde-lint
+        uses: arran4/qt-kde-lint@v1
         with:
-          repository: arran4/qt-kde-lint
-          ref: main
-          path: .qt-kde-lint
-
-      - name: qt-kde-lint
-        run: |
-          python3 .qt-kde-lint/tools/build_config.py \
-            --rules-dir .qt-kde-lint/rules \
-            --output build/qt-kde-lint.clang-tidy
-          find src tests -type f \
-            \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
-            -print0 2>/dev/null \
-            | xargs -0 -r clang-tidy-23 \
-                --experimental-custom-checks \
-                --config-file=build/qt-kde-lint.clang-tidy \
-                -p build
+          build-directory: build
+          cpp-paths: src tests
+          clang-tidy: clang-tidy-23
 ```
 
 The important point is that the project's normal `.clang-tidy` remains authoritative for its existing checks, while qt-kde-lint supplies a separate generated configuration containing only this project's custom checks.
@@ -187,31 +150,17 @@ For example:
 
       - uses: actions/checkout@v4
 
-      - name: Check out qt-kde-lint
-        uses: actions/checkout@v4
-        with:
-          repository: arran4/qt-kde-lint
-          ref: main
-          path: .qt-kde-lint
-
       - name: Configure CMake for analysis
         run: cmake -S . -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run qt-kde-lint
-        run: |
-          clang-tidy-23 --version
-          python3 .qt-kde-lint/tools/build_config.py \
-            --rules-dir .qt-kde-lint/rules \
-            --output build/qt-kde-lint.clang-tidy
-          find src tests -type f \
-            \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
-            -print0 2>/dev/null \
-            | xargs -0 -r clang-tidy-23 \
-                --experimental-custom-checks \
-                --config-file=build/qt-kde-lint.clang-tidy \
-                -p build
+        uses: arran4/qt-kde-lint@v1
+        with:
+          build-directory: build
+          cpp-paths: src tests
+          clang-tidy: clang-tidy-23
 ```
 
 Keep the normal build/test job on its preferred distribution if desired. The analysis job only needs to configure the project successfully and expose the same headers, generated files, include paths, compile definitions, and language options closely enough for clang-tidy to parse the real build.
@@ -241,6 +190,30 @@ On an image where `clang-tidy-23` is available directly, install the versioned p
 
 If the normal Qt/KDE build image does not provide clang-tidy 23 yet, keep the existing lint/build job unchanged and add a dedicated qt-kde-lint job using an LLVM-23-capable image with the same project development dependencies. Do not silently fall back to clang-tidy 22 or older: those versions do not provide the custom-check interface this repository currently targets.
 
+### Canonical Runner (Local/Non-GitHub usage)
+
+For local development or non-GitHub CI (like GitLab, KDE CI, Gentoo), the repository provides a canonical runner `tools/run.py` which unifies C++ and QML linting.
+
+```sh
+git clone https://github.com/arran4/qt-kde-lint.git .qt-kde-lint
+
+# Install QML dependencies if running QML checks
+pip install -r .qt-kde-lint/requirements-qml.txt
+
+# Run the unified runner
+python3 .qt-kde-lint/tools/run.py \
+    --build-dir build \
+    --clang-tidy clang-tidy-23 \
+    --cpp-paths src tests bench \
+    --qml-paths src
+```
+
+The runner accepts:
+- `--build-dir`: Build directory containing `compile_commands.json`
+- `--clang-tidy`: The clang-tidy executable to use
+- `--cpp-paths`: Paths to scan for C++ files
+- `--qml-paths`: Paths to scan for QML files
+
 ### CI enforcement
 
 For automated testing, qt-kde-lint must run in a job that actually executes for pull requests and pushes where code checks are expected.
@@ -265,11 +238,9 @@ Either makes the integration informational rather than protective. The intended 
 
 Existing legacy/static-analysis steps may temporarily soft-fail while their warning backlog is being migrated, but qt-kde-lint rules are intended to be low-noise enough to be merge-blocking from the point they are adopted.
 
-### Why checkout the rules instead of copying them into each project?
+### Why use the action instead of copying rules?
 
-Keeping the rule definitions in this repository means every consumer runs the same rule IDs, diagnostics, regression-tested matchers, and fixes. Once stable releases/tags exist, consumers should pin the checkout to a tag or commit and update it deliberately, rather than duplicating rule JSON into each Qt/KDE repository.
-
-A reusable/composite GitHub Action may be added later to hide the checkout/config-generation boilerplate. Until that exists, the explicit steps above make the compiler version, compilation database, and rule source visible in each consuming workflow.
+Keeping the rule definitions in this repository means every consumer runs the same rule IDs, diagnostics, regression-tested matchers, and fixes. Once stable releases/tags exist, consumers should pin the action usage (`uses: arran4/qt-kde-lint@v1`) and update it deliberately, rather than duplicating rule JSON into each Qt/KDE repository.
 
 ## Status
 
