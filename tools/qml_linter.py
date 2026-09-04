@@ -519,6 +519,205 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
     context.walk(context.tree.root_node, visit)
 
+
+@register_rule
+def qt_kde_lint_qml_transient_object_leak(context):
+    context.find_components()
+
+    # Collect all IDs in the file to know what is a "long-lived" parent
+    all_ids = set()
+    def collect_ids(node):
+        if node.type == 'ui_object_initializer':
+            val_node = context.get_property_binding(node, b'id')
+            if val_node:
+                for exp_child in val_node.children:
+                    if exp_child.type == 'identifier':
+                        all_ids.add(exp_child.text)
+    context.walk(context.tree.root_node, collect_ids)
+
+    def is_long_lived_parent(node):
+        if node.type == 'identifier':
+            # parent is considered long-lived
+            if node.text == b'parent':
+                return True
+            # known IDs are considered long-lived
+            if node.text in all_ids:
+                return True
+        return False
+
+    def is_repeatable_handler(node):
+        if node.type == 'ui_binding':
+            ident = node.children[0]
+            if ident.type == 'identifier':
+                text = ident.text.decode('utf-8')
+                if text in ('onClicked', 'onTapped', 'onTriggered', 'onPressed', 'onReleased', 'onDoubleClicked', 'onPressAndHold'):
+                    return True
+        return False
+
+    def is_qt_create_component(call_node):
+        # Qt.createComponent("...")
+        if call_node.type == 'call_expression':
+            member_expr, receiver, prop_ident, args = context.get_call_expression(call_node)
+            if member_expr and prop_ident and prop_ident.text == b'createComponent':
+                if receiver and receiver.text == b'Qt':
+                    return True
+        return False
+
+    def visit(node):
+        if not is_repeatable_handler(node):
+            return
+
+        stmt_block = None
+        for child in node.children:
+            if child.type == 'statement_block':
+                stmt_block = child
+                break
+
+        if not stmt_block:
+            return
+
+        # track local variables in this block
+        local_vars = set()
+        def collect_locals(n):
+            if n.type in ('lexical_declaration', 'variable_declaration'):
+                var_name, _ = context.get_local_variable_declaration(n)
+                if var_name:
+                    local_vars.add(var_name.text)
+        context.walk(stmt_block, collect_locals)
+
+        def find_leaks(n):
+            if n.type in ('lexical_declaration', 'variable_declaration'):
+                var_name, var_val = context.get_local_variable_declaration(n)
+                if var_name and var_val and var_val.type == 'call_expression':
+                    member_expr, receiver, prop_ident, args = context.get_call_expression(var_val)
+                    is_creation = False
+                    parent_arg = None
+
+                    if member_expr and prop_ident and prop_ident.text == b'createObject':
+                        if args and len(args.children) > 2: # '(' arg ')'
+                            parent_arg = args.children[1]
+
+                        # case 1: known component ID
+                        if receiver and receiver.text in context.known_components:
+                            is_creation = True
+
+                        # case 2: Qt.createComponent(...).createObject(...)
+                        elif receiver and receiver.type == 'call_expression':
+                            if is_qt_create_component(receiver):
+                                is_creation = True
+
+                        # case 3: local variable that holds Qt.createComponent
+                        elif receiver and receiver.type == 'identifier' and receiver.text in local_vars:
+                            # Verify if it was assigned Qt.createComponent
+                            def find_assignment(v_n):
+                                if v_n.type in ('lexical_declaration', 'variable_declaration'):
+                                    v_name, v_val_n = context.get_local_variable_declaration(v_n)
+                                    if v_name and v_name.text == receiver.text and v_val_n and v_val_n.type == 'call_expression':
+                                        if is_qt_create_component(v_val_n):
+                                            return True
+                                return False
+
+                            is_comp = False
+                            def walk_and_find(sn):
+                                nonlocal is_comp
+                                if find_assignment(sn):
+                                    is_comp = True
+                            context.walk(stmt_block, walk_and_find)
+                            if is_comp:
+                                is_creation = True
+
+                        # case 4: member expression directly e.g. Qt.createComponent("...").createObject(parent)
+                        elif member_expr and member_expr.children[0].type == 'call_expression':
+                            if is_qt_create_component(member_expr.children[0]):
+                                is_creation = True
+
+                    if is_creation:
+                        if not parent_arg or not is_long_lived_parent(parent_arg):
+                            # if parent is not clearly long-lived, we do NOT warn (conservative)
+                            return
+
+                        var_text = var_name.text
+                        is_safe = False
+
+                        def find_uses(u):
+                            nonlocal is_safe
+                            if is_safe: return
+
+                            # Check direct call: u.destroy()
+                            if u.type == 'call_expression':
+                                m_expr, rec, p_ident, func_args = context.get_call_expression(u)
+                                if rec and rec.text == var_text and p_ident and p_ident.text == b'destroy':
+                                    is_safe = True
+                                    return
+
+                                # Check if it's `.connect(var.destroy)`
+                                if p_ident and p_ident.text == b'connect' and func_args:
+                                    for arg_child in func_args.children:
+                                        if arg_child.type == 'member_expression':
+                                            if len(arg_child.children) >= 3:
+                                                r = arg_child.children[0]
+                                                p = arg_child.children[-1]
+                                                if r.type == 'identifier' and r.text == var_text and p.type == 'property_identifier' and p.text == b'destroy':
+                                                    is_safe = True
+                                                    return
+
+                            # Check assignment to another variable/property
+                            if u.type in ('assignment_expression', 'augmented_assignment_expression'):
+                                right = u.children[-1]
+                                left = u.children[0]
+                                if right.type == 'identifier' and right.text == var_text:
+                                    # ONLY safe if assigning to a NON-LOCAL property/variable
+                                    if left.type == 'identifier':
+                                        if left.text in local_vars:
+                                            # local alias, not safe
+                                            pass
+                                        else:
+                                            is_safe = True
+                                            return
+                                    elif left.type == 'member_expression':
+                                        # find root receiver of member expression
+                                        root = left
+                                        while root.type == 'member_expression' and len(root.children) > 0:
+                                            root = root.children[0]
+                                        if root.type == 'identifier' and root.text in local_vars:
+                                            # member of a local variable, not safe
+                                            pass
+                                        else:
+                                            is_safe = True
+                                            return
+                                    else:
+                                        is_safe = True
+                                        return
+
+                            # Check if it is passed to array.push() or similar that escapes scope
+                            if u.type == 'call_expression':
+                                m_expr, rec, p_ident, func_args = context.get_call_expression(u)
+                                if func_args:
+                                    for arg_child in func_args.children:
+                                        if arg_child.type == 'identifier' and arg_child.text == var_text:
+                                            # Is it a method call on a known retaining object? e.g. myArray.push(u)
+                                            if m_expr and p_ident and p_ident.text in (b'push', b'append', b'insert'):
+                                                # Need to find root of rec if it's a member expression
+                                                root_rec = rec
+                                                while root_rec and root_rec.type == 'member_expression' and len(root_rec.children) > 0:
+                                                    root_rec = root_rec.children[0]
+                                                if root_rec and root_rec.type == 'identifier' and root_rec.text not in local_vars:
+                                                    is_safe = True
+                                                    return
+
+                        context.walk(stmt_block, find_uses)
+
+                        if not is_safe:
+                            context.report_issue(
+                                n,
+                                "qt-kde-lint-qml-transient-object-leak",
+                                "Transient object created via createObject() under a long-lived parent in a repeatable handler without an explicit destruction path or scope escape. This may cause memory leaks across multiple interactions."
+                            )
+
+        context.walk(stmt_block, find_leaks)
+
+    context.walk(context.tree.root_node, visit)
+
 def check_qml(filepath):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
