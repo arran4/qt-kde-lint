@@ -718,6 +718,48 @@ def qt_kde_lint_qml_transient_object_leak(context):
 
     context.walk(context.tree.root_node, visit)
 
+
+@register_rule
+def qt_kde_lint_action_semantic_context(context):
+    def visit(node):
+        if node.type == 'ui_object_definition':
+            # Check if this object is an Action or Kirigami.Action
+            is_action = False
+            for child in node.children:
+                if child.type == 'identifier' and child.text == b'Action':
+                    is_action = True
+                    break
+                elif child.type == 'nested_identifier':
+                    # e.g. Kirigami.Action
+                    # The last child should be an identifier 'Action'
+                    last_ident = None
+                    for subchild in child.children:
+                        if subchild.type == 'identifier':
+                            last_ident = subchild
+                    if last_ident and last_ident.text == b'Action':
+                        is_action = True
+                        break
+
+            if is_action:
+                # Find its text property
+                for child in node.children:
+                    if child.type == 'ui_object_initializer':
+                        val_node = context.get_property_binding(child, b'text')
+                        if val_node:
+                            # val_node is an expression_statement
+                            for exp_child in val_node.children:
+                                if exp_child.type == 'call_expression':
+                                    ident = exp_child.children[0]
+                                    if ident.type == 'identifier' and ident.text in (b'i18n', b'i18nd', b'ki18n', b'ki18nd'):
+                                        # It's missing context
+                                        context.report_issue(
+                                            exp_child, # or val_node, or node? let's use the binding or the exp_child
+                                            "qt-kde-lint-action-semantic-context",
+                                            'UI action labels translated with plain i18n() lack semantic context. Prefer i18nc() with a semantic context such as "@action" to aid translators.'
+                                        )
+
+    context.walk(context.tree.root_node, visit)
+
 def check_qml(filepath):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
