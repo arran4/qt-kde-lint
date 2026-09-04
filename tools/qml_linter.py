@@ -196,7 +196,6 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
             for c in node.children:
                 if always_returns(c):
                     return True
-        # If it's an if_statement, it always returns if BOTH branches always return
         if node.type == 'if_statement':
             cons = None
             alt = None
@@ -310,16 +309,21 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                 for i in range(idx + 1, len(siblings)):
                                     sibling = siblings[i]
 
-                                    def find_refs(n, refs):
+                                    # State tracked per path branch
+                                    # LIVE: Original nullable value may reach here
+                                    # ELIMINATED: Reassigned or explicitly proven non-null
+                                    # EXITED: Flow exits (return/break/throw)
+
+                                    def find_refs(n, out_issues):
+                                        state = "LIVE"
+
                                         if n.type in ('assignment_expression', 'augmented_assignment_expression'):
                                             left = n.children[0]
                                             if left.type == 'identifier' and left.text == var_name:
                                                 right = n.children[-1] if len(n.children) > 2 else None
                                                 if right:
-                                                    find_refs(right, refs)
-
-                                                refs['stopped'] = True
-                                                return
+                                                    find_refs(right, out_issues)
+                                                return "ELIMINATED"
 
                                         if n.type == 'if_statement':
                                             cond = None
@@ -370,12 +374,9 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                 if safe_cond_derefs(expr):
                                                     cond_status = 'proves_non_null'
                                                 else:
-                                                    cond_refs = {'unsafe_derefs': [], 'stopped': False}
-                                                    find_refs(cond, cond_refs)
-                                                    refs['unsafe_derefs'].extend(cond_refs['unsafe_derefs'])
-                                                    if cond_refs['stopped']:
-                                                        refs['stopped'] = True
-                                                        return
+                                                    cond_state = find_refs(cond, out_issues)
+                                                    if cond_state != "LIVE":
+                                                        return cond_state
 
                                                 if cond_status == 'unknown':
                                                     if expr.type == 'identifier' and expr.text == var_name:
@@ -411,75 +412,50 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                                 elif op.type in ('!=', '!=='):
                                                                     cond_status = 'proves_non_null'
 
-                                            cons_refs = {'unsafe_derefs': [], 'stopped': False}
-                                            alt_refs = {'unsafe_derefs': [], 'stopped': False}
+                                            cons_state = "LIVE"
+                                            alt_state = "LIVE"
 
-                                            cons_stops = False
-                                            alt_stops = False
+                                            cons_issues = []
+                                            alt_issues = []
 
                                             if consequence:
-                                                if cond_status != 'proves_null': # Only visit if not known null
-                                                    find_refs(consequence, cons_refs)
-                                                else:
-                                                    # If it proves null, any derefs in consequence ARE unsafe
-                                                    find_refs(consequence, cons_refs)
-
-                                                if cons_refs['stopped'] or always_returns(consequence):
-                                                    cons_stops = True
+                                                cons_state = find_refs(consequence, cons_issues)
+                                                if always_returns(consequence):
+                                                    cons_state = "EXITED"
                                             else:
                                                 if cond_status == 'proves_non_null':
-                                                    cons_stops = True # It's safe in consequence, but if consequence is empty, fallthrough is NOT safe
-                                                    cons_stops = False
-                                                    # wait, an empty consequence means it just falls through.
+                                                    cons_state = "ELIMINATED"
 
                                             if alternative:
-                                                if cond_status != 'proves_non_null':
-                                                    find_refs(alternative, alt_refs)
-                                                else:
-                                                    find_refs(alternative, alt_refs) # It's known non-null in consequence, but null in alt, so alt derefs are unsafe
-
-                                                if alt_refs['stopped'] or always_returns(alternative):
-                                                    alt_stops = True
+                                                alt_state = find_refs(alternative, alt_issues)
+                                                if always_returns(alternative):
+                                                    alt_state = "EXITED"
                                             else:
-                                                # If there is no alternative, does the alternative stop?
                                                 if cond_status == 'proves_null':
-                                                    alt_stops = False # Wait, if (!menu) { menu = fallback; } else { /* no alt */ }. The fallthrough is safe? Yes.
-
-                                            # If cond_status is proves_non_null, derefs in consequence are SAFE.
-                                            # If cond_status is proves_null, derefs in alternative are SAFE.
+                                                    alt_state = "ELIMINATED"
 
                                             if cond_status == 'proves_non_null':
-                                                # Consequence derefs are safe, so clear them.
-                                                cons_refs['unsafe_derefs'] = []
-                                                if always_returns(consequence) or cons_refs['stopped']:
-                                                    cons_stops = True
+                                                cons_issues.clear()
+                                                if consequence and always_returns(consequence):
+                                                    cons_state = "EXITED"
+                                                elif cons_state != "EXITED":
+                                                    cons_state = "ELIMINATED"
                                             elif cond_status == 'proves_null':
-                                                # Alternative derefs are safe (if it exists)
-                                                alt_refs['unsafe_derefs'] = []
-                                                if consequence and (always_returns(consequence) or cons_refs['stopped']):
-                                                    cons_stops = True
-                                                if alternative and (always_returns(alternative) or alt_refs['stopped']):
-                                                    alt_stops = True
+                                                alt_issues.clear()
+                                                if alternative and always_returns(alternative):
+                                                    alt_state = "EXITED"
+                                                elif alt_state != "EXITED":
+                                                    alt_state = "ELIMINATED"
 
-                                            refs['unsafe_derefs'].extend(cons_refs['unsafe_derefs'])
-                                            refs['unsafe_derefs'].extend(alt_refs['unsafe_derefs'])
+                                            out_issues.extend(cons_issues)
+                                            out_issues.extend(alt_issues)
 
-                                            # If BOTH branches stop, the whole if stops fallthrough
-                                            if (consequence and cons_stops) and (alternative and alt_stops):
-                                                refs['stopped'] = True
-                                            elif cond_status == 'proves_null' and consequence and cons_stops and not alternative:
-                                                # if (!menu) return;  (no alternative)
-                                                # BOTH branches stop because if menu is null, it returns.
-                                                # But what if menu is NOT null? Then it falls through safely.
-                                                # If it falls through safely, then `refs['stopped']` should be True?
-                                                # "stopped" means we stop looking for unsafe derefs.
-                                                # Yes! `refs['stopped'] = True` means we don't flag any siblings downstream.
-                                                refs['stopped'] = True
-                                            elif cond_status == 'proves_non_null' and alternative and alt_stops and not consequence:
-                                                # if (menu) {} else { return; }
-                                                refs['stopped'] = True
+                                            if cons_state in ("ELIMINATED", "EXITED") and alt_state in ("ELIMINATED", "EXITED"):
+                                                if cons_state == "EXITED" and alt_state == "EXITED":
+                                                    return "EXITED"
+                                                return "ELIMINATED"
 
-                                            return
+                                            return "LIVE"
 
                                         if n.type == 'member_expression':
                                             rec = None
@@ -494,30 +470,30 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                         is_optional = True
                                                         break
                                                 if not is_optional:
-                                                    refs['unsafe_derefs'].append(n)
+                                                    out_issues.append(n)
 
                                         for child in n.children:
-                                            find_refs(child, refs)
-                                            if refs.get('stopped'):
-                                                break
+                                            child_state = find_refs(child, out_issues)
+                                            if child_state != "LIVE":
+                                                return child_state
 
-                                    refs = {'unsafe_derefs': [], 'stopped': False}
+                                        return "LIVE"
 
-                                    # Sibling evaluation
+                                    out_issues = []
+
                                     if sibling.type == 'expression_statement' and sibling.children[0].type in ('assignment_expression', 'augmented_assignment_expression'):
-                                        # If the sibling is a top level assignment statement, evaluate the RHS but then mark stopped=True at the end
                                         left = sibling.children[0].children[0]
                                         if left.type == 'identifier' and left.text == var_name:
                                             right = sibling.children[0].children[-1] if len(sibling.children[0].children) > 2 else None
                                             if right:
-                                                find_refs(right, refs)
-                                            refs['stopped'] = True
+                                                find_refs(right, out_issues)
+                                            break
                                         else:
-                                            find_refs(sibling, refs)
+                                            state = find_refs(sibling, out_issues)
                                     else:
-                                        find_refs(sibling, refs)
+                                        state = find_refs(sibling, out_issues)
 
-                                    if refs['unsafe_derefs']:
+                                    if out_issues:
                                         context.report_issue(
                                             sibling,
                                             "qt-kde-lint-qml-component-createobject-null-dereference",
@@ -525,7 +501,7 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                         )
                                         break
 
-                                    if refs['stopped']:
+                                    if state in ("ELIMINATED", "EXITED"):
                                         break
 
 
