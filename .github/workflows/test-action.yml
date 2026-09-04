@@ -1,0 +1,92 @@
+name: test-action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-action:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 23 clang-tidy
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 23
+          sudo apt-get install -y clang-tidy-23
+          clang-tidy-23 --version
+
+      - name: Setup test fixtures
+        run: |
+          mkdir -p build
+          echo '[{"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/good.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/good.cpp"}, {"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/bad.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/bad.cpp"}]' > build/compile_commands.json
+
+      - name: Test action success (both)
+        uses: ./
+        with:
+          build-directory: build
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/good.cpp
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good_explicit_destroy.qml
+
+      - name: Test action failure (both)
+        id: test-failure
+        continue-on-error: true
+        uses: ./
+        with:
+          build-directory: build
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/bad.cpp
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad_repeatable_handler.qml
+
+      - name: Check failure (both)
+        run: |
+          if [ "${{ steps.test-failure.outcome }}" == "success" ]; then
+            echo "Action should have failed but succeeded"
+            false
+          fi
+
+      - name: Test action success (C++ only)
+        uses: ./
+        with:
+          build-directory: build
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/good.cpp
+
+      - name: Test action failure (C++ only)
+        id: test-cpp-failure
+        continue-on-error: true
+        uses: ./
+        with:
+          build-directory: build
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/bad.cpp
+
+      - name: Check failure (C++ only)
+        run: |
+          if [ "${{ steps.test-cpp-failure.outcome }}" == "success" ]; then
+            echo "Action should have failed but succeeded"
+            false
+          fi
+
+      - name: Test action success (QML only)
+        uses: ./
+        with:
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good_explicit_destroy.qml
+
+      - name: Test action failure (QML only)
+        id: test-qml-failure
+        continue-on-error: true
+        uses: ./
+        with:
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad_repeatable_handler.qml
+
+      - name: Check failure (QML only)
+        run: |
+          if [ "${{ steps.test-qml-failure.outcome }}" == "success" ]; then
+            echo "Action should have failed but succeeded"
+            false
+          fi
