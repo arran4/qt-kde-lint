@@ -519,6 +519,92 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
     context.walk(context.tree.root_node, visit)
 
+
+@register_rule
+def qt_kde_lint_qml_transient_object_leak(context):
+    context.find_components()
+
+    def is_repeatable_handler(node):
+        if node.type == 'ui_binding':
+            ident = node.children[0]
+            if ident.type == 'identifier':
+                text = ident.text.decode('utf-8')
+                if text in ('onClicked', 'onTapped', 'onTriggered', 'onPressed', 'onReleased', 'onDoubleClicked', 'onPressAndHold'):
+                    return True
+        return False
+
+    def visit(node):
+        if not is_repeatable_handler(node):
+            return
+
+        stmt_block = None
+        for child in node.children:
+            if child.type == 'statement_block':
+                stmt_block = child
+                break
+
+        if not stmt_block:
+            return
+
+        def find_leaks(n):
+            if n.type in ('lexical_declaration', 'variable_declaration'):
+                var_name, var_val = context.get_local_variable_declaration(n)
+                if var_name and var_val and var_val.type == 'call_expression':
+                    member_expr, receiver, prop_ident, args = context.get_call_expression(var_val)
+                    if member_expr and prop_ident and prop_ident.text == b'createObject':
+                        if receiver and receiver.text in context.known_components:
+                            var_text = var_name.text
+                            is_safe = False
+
+                            def find_uses(u):
+                                nonlocal is_safe
+                                if is_safe: return
+
+                                # Check direct call: u.destroy()
+                                if u.type == 'call_expression':
+                                    m_expr, rec, p_ident, _ = context.get_call_expression(u)
+                                    if rec and rec.text == var_text and p_ident and p_ident.text == b'destroy':
+                                        is_safe = True
+                                        return
+
+                                # Check assignment to another variable/property
+                                if u.type in ('assignment_expression', 'augmented_assignment_expression'):
+                                    right = u.children[-1]
+                                    if right.type == 'identifier' and right.text == var_text:
+                                        is_safe = True
+                                        return
+
+                                # Check if it is passed to array.push() or similar that escapes scope
+                                if u.type == 'call_expression':
+                                    _, _, _, func_args = context.get_call_expression(u)
+                                    if func_args:
+                                        for arg_child in func_args.children:
+                                            if arg_child.type == 'identifier' and arg_child.text == var_text:
+                                                is_safe = True
+                                                return
+
+                                # Check m.onClosed.connect(m.destroy) or similar property access
+                                if u.type == 'member_expression':
+                                    if len(u.children) >= 3:
+                                        rec = u.children[0]
+                                        prop = u.children[-1]
+                                        if rec.type == 'identifier' and rec.text == var_text and prop.type == 'property_identifier' and prop.text == b'destroy':
+                                            is_safe = True
+                                            return
+
+                            context.walk(stmt_block, find_uses)
+
+                            if not is_safe:
+                                context.report_issue(
+                                    n,
+                                    "qt-kde-lint-qml-transient-object-leak",
+                                    "Transient object created via Component.createObject() in a repeatable handler without an explicit destruction path or scope escape. This may cause memory leaks across multiple interactions."
+                                )
+
+        context.walk(stmt_block, find_leaks)
+
+    context.walk(context.tree.root_node, visit)
+
 def check_qml(filepath):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
