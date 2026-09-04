@@ -315,8 +315,6 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                     # EXITED: Flow exits (return/break/throw)
 
                                     def find_refs(n, out_issues):
-                                        state = "LIVE"
-
                                         if n.type in ('assignment_expression', 'augmented_assignment_expression'):
                                             left = n.children[0]
                                             if left.type == 'identifier' and left.text == var_name:
@@ -457,6 +455,13 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                             return "LIVE"
 
+                                        if n.type in ('while_statement', 'for_statement', 'do_statement', 'for_in_statement', 'switch_statement', 'try_statement'):
+                                            # We scan for issues, but do NOT propagate ELIMINATED/EXITED states
+                                            # because we do not know if the loops/branches execute or fall through.
+                                            for child in n.children:
+                                                find_refs(child, out_issues)
+                                            return "LIVE"
+
                                         if n.type == 'member_expression':
                                             rec = None
                                             for c in n.children:
@@ -474,6 +479,11 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                         for child in n.children:
                                             child_state = find_refs(child, out_issues)
+                                            # We only propagate ELIMINATED/EXITED for sequential statement flows in blocks,
+                                            # For generic ast traversal inside unknown nodes, we shouldn't necessarily bubble it up.
+                                            # Wait, `statement_block` propagates.
+                                            # What about `expression_statement`? It bubbles up ELIMINATED from assignment.
+                                            # So bubbling up is mostly safe as long as unmodeled containers suppress it.
                                             if child_state != "LIVE":
                                                 return child_state
 
