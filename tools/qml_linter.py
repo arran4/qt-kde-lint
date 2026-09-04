@@ -18,43 +18,132 @@ class QmlLintContext:
         for child in node.children:
             self.walk(child, callback)
 
+    def find_object_definition(self, node, expected_type):
+        '''Find if a node is a UI object definition of a specific type.'''
+        if node.type == 'ui_object_definition':
+            for child in node.children:
+                if child.type == 'identifier' and child.text == expected_type:
+                    return True
+        return False
+
+    def get_property_binding(self, node, property_name):
+        '''Get the value node for a specific property binding in an object initializer.'''
+        if node.type == 'ui_object_initializer':
+            for stmt in node.children:
+                if stmt.type == 'ui_binding':
+                    key_node = None
+                    val_node = None
+                    for binding_child in stmt.children:
+                        if binding_child.type == 'identifier':
+                            key_node = binding_child
+                        elif binding_child.type == 'expression_statement':
+                            val_node = binding_child
+                    if key_node and key_node.text == property_name and val_node:
+                        return val_node
+        return None
+
+    def get_call_expression(self, node):
+        '''Extract member expression, receiver, and arguments from a call expression.'''
+        if node.type != 'call_expression':
+            return None, None, None, None
+
+        member_expr = None
+        args = None
+        for child in node.children:
+            if child.type == 'member_expression':
+                member_expr = child
+            elif child.type == 'arguments':
+                args = child
+
+        if not member_expr:
+            return None, None, None, None
+
+        receiver = None
+        prop_ident = None
+        for child in member_expr.children:
+            if child.type == 'identifier':
+                receiver = child
+            elif child.type == 'property_identifier':
+                prop_ident = child
+
+        return member_expr, receiver, prop_ident, args
+
     def find_components(self):
-        """Find and collect known Component IDs in the AST."""
+        '''Find and collect known Component IDs in the AST.'''
         if self._components_resolved:
             return self.known_components
 
         def collect_components(node):
-            if node.type == 'ui_object_definition':
-                # Check if this object is a Component
-                is_component_def = False
+            if self.find_object_definition(node, b'Component'):
+                # Find its initializer block `{ ... }`
                 for child in node.children:
-                    if child.type == 'identifier' and child.text == b'Component':
-                        is_component_def = True
-                        break
-
-                if is_component_def:
-                    # Find its initializer block `{ ... }`
-                    for child in node.children:
-                        if child.type == 'ui_object_initializer':
-                            # Look for an `id` binding
-                            for stmt in child.children:
-                                if stmt.type == 'ui_binding':
-                                    key_node = None
-                                    val_node = None
-                                    for binding_child in stmt.children:
-                                        if binding_child.type == 'identifier':
-                                            key_node = binding_child
-                                        elif binding_child.type == 'expression_statement':
-                                            val_node = binding_child
-                                    if key_node and key_node.text == b'id' and val_node:
-                                        # The id value is an identifier in the expression statement
-                                        for exp_child in val_node.children:
-                                            if exp_child.type == 'identifier':
-                                                self.known_components.add(exp_child.text)
+                    if child.type == 'ui_object_initializer':
+                        # Look for an `id` binding
+                        val_node = self.get_property_binding(child, b'id')
+                        if val_node:
+                            # The id value is an identifier in the expression statement
+                            for exp_child in val_node.children:
+                                if exp_child.type == 'identifier':
+                                    self.known_components.add(exp_child.text)
 
         self.walk(self.tree.root_node, collect_components)
         self._components_resolved = True
         return self.known_components
+
+    def get_local_variable_declaration(self, node):
+        """Extract the variable name and assigned value from a lexical declaration.
+
+        Note: If a declaration contains multiple variables (e.g. `let x = 1, y = 2`),
+        this helper currently only returns the first one.
+        """
+        if node.type == 'lexical_declaration':
+            for child in node.children:
+                if child.type == 'variable_declarator':
+                    ident = None
+                    val = None
+                    for var_child in child.children:
+                        if var_child.type == 'identifier':
+                            ident = var_child
+                        elif var_child.type == '=':
+                            continue
+                        else:
+                            val = var_child
+                    if ident:
+                        return ident, val
+        return None, None
+
+
+
+    def get_assignment_expression(self, node):
+        """Extract the left and right side of a plain assignment expression.
+
+        Returns (left_node, right_node) if this is a plain '=' assignment.
+        Returns (None, None) for compound assignments (e.g. '+=') or non-assignments.
+        """
+        if node.type == 'augmented_assignment_expression':
+            return None, None
+
+        if node.type == 'assignment_expression':
+            left = None
+            right = None
+            is_plain_assignment = False
+            for child in node.children:
+                if child.type == '=':
+                    is_plain_assignment = True
+                    continue
+                # If we hit an operator like '+=' or '-=', it's not a plain assignment
+                if child.type in ('+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '>>>=', '&=', '^=', '|='):
+                    return None, None
+
+                if not left:
+                    left = child
+                else:
+                    right = child
+            if is_plain_assignment:
+                return left, right
+        return None, None
+
+
 
     def report_issue(self, node, rule_name, message):
         """Report a linting issue at the node's location."""
@@ -71,63 +160,27 @@ def qt_kde_lint_reject_id_in_createobject(context):
     context.find_components()
 
     def visit(node):
-        if node.type == 'call_expression':
-            # Check if it's createObject
-            member_expr = None
-            for child in node.children:
-                if child.type == 'member_expression':
-                    member_expr = child
-                    break
-
-            if member_expr:
-                prop_ident = None
-                for child in member_expr.children:
-                    if child.type == 'property_identifier':
-                        prop_ident = child
-                        break
-
-                if prop_ident and prop_ident.text == b'createObject':
-                    # Check receiver
-                    receiver = None
-                    for child in member_expr.children:
-                        if child.type == 'identifier':
-                            receiver = child
-                            break
-
-                    is_component = False
-                    if receiver:
-                        # Match if the receiver is a known Component ID
-                        if receiver.text in context.known_components:
-                            is_component = True
-
-                    if not is_component:
-                        return
-
-                    # Now check arguments
-                    args = None
-                    for child in node.children:
-                        if child.type == 'arguments':
-                            args = child
-                            break
-
-                    if args:
-                        for arg_child in args.children:
-                            if arg_child.type == 'object':
-                                # This is the properties object
-                                for obj_child in arg_child.children:
-                                    if obj_child.type == 'pair':
-                                        key_node = obj_child.children[0]
-                                        key_text = key_node.text
-                                        if key_node.type == 'string':
-                                            # Strip quotes
-                                            key_text = key_text.strip(b'"\'')
-                                        if key_node.type == 'property_identifier' or key_node.type == 'string':
-                                            if key_text == b'id':
-                                                context.report_issue(
-                                                    node,
-                                                    "qt-kde-lint-reject-id-in-createobject",
-                                                    "id is not a runtime QML property and cannot be assigned through Component.createObject(). Remove it; keep the returned object in a JavaScript/property reference if you need to refer to the instance."
-                                                )
+        member_expr, receiver, prop_ident, args = context.get_call_expression(node)
+        if member_expr and prop_ident and prop_ident.text == b'createObject':
+            if receiver and receiver.text in context.known_components:
+                if args:
+                    for arg_child in args.children:
+                        if arg_child.type == 'object':
+                            # This is the properties object
+                            for obj_child in arg_child.children:
+                                if obj_child.type == 'pair':
+                                    key_node = obj_child.children[0]
+                                    key_text = key_node.text
+                                    if key_node.type == 'string':
+                                        # Strip quotes
+                                        key_text = key_text.strip(b'"\'')
+                                    if key_node.type == 'property_identifier' or key_node.type == 'string':
+                                        if key_text == b'id':
+                                            context.report_issue(
+                                                node,
+                                                "qt-kde-lint-reject-id-in-createobject",
+                                                "id is not a runtime QML property and cannot be assigned through Component.createObject(). Remove it; keep the returned object in a JavaScript/property reference if you need to refer to the instance."
+                                            )
 
     context.walk(context.tree.root_node, visit)
 
