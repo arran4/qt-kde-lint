@@ -645,10 +645,21 @@ def qt_kde_lint_qml_transient_object_leak(context):
 
                             # Check direct call: u.destroy()
                             if u.type == 'call_expression':
-                                m_expr, rec, p_ident, _ = context.get_call_expression(u)
+                                m_expr, rec, p_ident, func_args = context.get_call_expression(u)
                                 if rec and rec.text == var_text and p_ident and p_ident.text == b'destroy':
                                     is_safe = True
                                     return
+
+                                # Check if it's `.connect(var.destroy)`
+                                if p_ident and p_ident.text == b'connect' and func_args:
+                                    for arg_child in func_args.children:
+                                        if arg_child.type == 'member_expression':
+                                            if len(arg_child.children) >= 3:
+                                                r = arg_child.children[0]
+                                                p = arg_child.children[-1]
+                                                if r.type == 'identifier' and r.text == var_text and p.type == 'property_identifier' and p.text == b'destroy':
+                                                    is_safe = True
+                                                    return
 
                             # Check assignment to another variable/property
                             if u.type in ('assignment_expression', 'augmented_assignment_expression'):
@@ -675,15 +686,6 @@ def qt_kde_lint_qml_transient_object_leak(context):
                                                 if rec and rec.type == 'identifier' and rec.text not in local_vars:
                                                     is_safe = True
                                                     return
-
-                            # Check m.onClosed.connect(m.destroy) or similar property access
-                            if u.type == 'member_expression':
-                                if len(u.children) >= 3:
-                                    rec = u.children[0]
-                                    prop = u.children[-1]
-                                    if rec.type == 'identifier' and rec.text == var_text and prop.type == 'property_identifier' and prop.text == b'destroy':
-                                        is_safe = True
-                                        return
 
                         context.walk(stmt_block, find_uses)
 
