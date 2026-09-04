@@ -210,6 +210,82 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
             return False
         return False
 
+
+    def get_implications(node, var_name, assumption):
+        while node.type == 'parenthesized_expression':
+            for c in node.children:
+                if c.type not in ('(', ')'):
+                    node = c
+                    break
+
+        if node.type == 'identifier' and node.text == var_name:
+            if assumption == 'truthy':
+                return 'proves_non_null'
+            return 'unknown'
+
+        if node.type == 'unary_expression':
+            op = None
+            arg = None
+            for c in node.children:
+                if c.type == '!': op = c
+                elif c.type not in ('!', 'comment'): arg = c
+            if op and arg:
+                if assumption == 'truthy':
+                    return get_implications(arg, var_name, 'falsy')
+                else:
+                    return get_implications(arg, var_name, 'truthy')
+
+        if node.type == 'binary_expression':
+            left = None
+            op = None
+            right = None
+            for c in node.children:
+                if c.type in ('!=', '!==', '==', '===', '&&', '||'): op = c
+            if op:
+                left = node.children[0]
+                right = node.children[-1]
+
+                if op.type in ('&&', '||'):
+                    if op.type == '&&':
+                        if assumption == 'truthy':
+                            l_imp = get_implications(left, var_name, 'truthy')
+                            if l_imp != 'unknown': return l_imp
+                            return get_implications(right, var_name, 'truthy')
+                        else:
+                            l_imp = get_implications(left, var_name, 'falsy')
+                            r_imp = get_implications(right, var_name, 'falsy')
+                            if l_imp != 'unknown' and l_imp == r_imp: return l_imp
+                            return 'unknown'
+                    elif op.type == '||':
+                        if assumption == 'falsy':
+                            l_imp = get_implications(left, var_name, 'falsy')
+                            if l_imp != 'unknown': return l_imp
+                            return get_implications(right, var_name, 'falsy')
+                        else:
+                            l_imp = get_implications(left, var_name, 'truthy')
+                            r_imp = get_implications(right, var_name, 'truthy')
+                            if l_imp != 'unknown' and l_imp == r_imp: return l_imp
+                            return 'unknown'
+
+                if op.type in ('!=', '!==', '==', '==='):
+                    is_var_null_check = False
+                    if (left.type == 'identifier' and left.text == var_name and (right.type == 'null' or right.text == b'null')) or                        (right.type == 'identifier' and right.text == var_name and (left.type == 'null' or left.text == b'null')):
+                        is_var_null_check = True
+
+                    if is_var_null_check:
+                        if op.type in ('!=', '!=='):
+                            if assumption == 'truthy':
+                                return 'proves_non_null'
+                            else:
+                                return 'proves_null'
+                        else:
+                            if assumption == 'truthy':
+                                return 'proves_null'
+                            else:
+                                return 'proves_non_null'
+
+        return 'unknown'
+
     def is_shadowed(node, name):
         curr = node.parent
         while curr:
@@ -337,43 +413,15 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     return left_state
 
                                                 if op_node.type == '&&':
-                                                    is_left_proves_non_null = False
-                                                    if left.type == 'identifier' and left.text == var_name:
-                                                        is_left_proves_non_null = True
-                                                    elif left.type == 'binary_expression':
-                                                        for c in left.children:
-                                                            if c.type in ('!=', '!=='):
-                                                                l2 = left.children[0]
-                                                                r2 = left.children[-1]
-                                                                if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
-                                                                    is_left_proves_non_null = True
-                                                                    break
-
-                                                    right_proven = proven_non_null or is_left_proves_non_null
+                                                    l_imp = get_implications(left, var_name, 'truthy')
+                                                    right_proven = proven_non_null or (l_imp == 'proves_non_null')
                                                     right_state = find_refs(right, out_issues, right_proven)
                                                     if right_state != "LIVE":
                                                         return right_state
                                                     return "LIVE"
                                                 elif op_node.type == '||':
-                                                    is_left_proves_null = False
-                                                    if left.type == 'unary_expression':
-                                                        op = None
-                                                        arg = None
-                                                        for c in left.children:
-                                                            if c.type == '!': op = c
-                                                            elif c.type == 'identifier': arg = c
-                                                        if op and arg and arg.text == var_name:
-                                                            is_left_proves_null = True
-                                                    elif left.type == 'binary_expression':
-                                                        for c in left.children:
-                                                            if c.type in ('==', '==='):
-                                                                l2 = left.children[0]
-                                                                r2 = left.children[-1]
-                                                                if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
-                                                                    is_left_proves_null = True
-                                                                    break
-
-                                                    right_proven = proven_non_null or is_left_proves_null
+                                                    l_imp = get_implications(left, var_name, 'falsy')
+                                                    right_proven = proven_non_null or (l_imp == 'proves_non_null')
                                                     right_state = find_refs(right, out_issues, right_proven)
                                                     if right_state != "LIVE":
                                                         return right_state
@@ -393,72 +441,16 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     else:
                                                         alternative = c
 
-                                            cond_status = 'unknown'
                                             if cond:
-                                                expr = cond
-                                                while expr.type == 'parenthesized_expression':
-                                                    for c in expr.children:
-                                                        if c.type not in ('(', ')'):
-                                                            expr = c
-                                                            break
-
-                                                # Traverse condition, which might evaluate short circuits.
                                                 cond_state = find_refs(cond, out_issues, proven_non_null)
                                                 if cond_state != "LIVE":
                                                     return cond_state
 
-                                                def safe_cond_derefs(cond_node):
-                                                    if cond_node.type == 'binary_expression':
-                                                        op_node = None
-                                                        for c in cond_node.children:
-                                                            if c.type in ('&&', '||'): op_node = c
-                                                        if op_node:
-                                                            if op_node.type == '&&':
-                                                                left_cond = cond_node.children[0]
-                                                                is_left_proves_non_null = False
-                                                                if left_cond.type == 'identifier' and left_cond.text == var_name:
-                                                                    is_left_proves_non_null = True
-                                                                elif left_cond.type == 'binary_expression':
-                                                                    for c in left_cond.children:
-                                                                        if c.type in ('!=', '!=='):
-                                                                            l2 = left_cond.children[0]
-                                                                            r2 = left_cond.children[-1]
-                                                                            if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
-                                                                                is_left_proves_non_null = True
-                                                                                break
-                                                                if is_left_proves_non_null:
-                                                                    return True
-                                                    return False
-
-                                                if safe_cond_derefs(expr):
-                                                    cond_status = 'proves_non_null'
-
-                                                if cond_status == 'unknown':
-                                                    if expr.type == 'identifier' and expr.text == var_name:
-                                                        cond_status = 'proves_non_null'
-                                                    elif expr.type == 'unary_expression':
-                                                        op = None
-                                                        arg = None
-                                                        for c in expr.children:
-                                                            if c.type == '!': op = c
-                                                            elif c.type == 'identifier': arg = c
-                                                        if op and arg and arg.text == var_name:
-                                                            cond_status = 'proves_null'
-                                                    elif expr.type == 'binary_expression':
-                                                        left = None
-                                                        op = None
-                                                        right = None
-                                                        for c in expr.children:
-                                                            if c.type in ('!=', '!==', '==', '==='): op = c
-                                                        if op:
-                                                            left = expr.children[0]
-                                                            right = expr.children[-1]
-                                                            if (left.type == 'identifier' and left.text == var_name and (right.type == 'null' or right.text == b'null')) or \
-                                                               (right.type == 'identifier' and right.text == var_name and (left.type == 'null' or left.text == b'null')):
-                                                                if op.type in ('==', '==='):
-                                                                    cond_status = 'proves_null'
-                                                                elif op.type in ('!=', '!=='):
-                                                                    cond_status = 'proves_non_null'
+                                                cond_truthy = get_implications(cond, var_name, 'truthy')
+                                                cond_falsy = get_implications(cond, var_name, 'falsy')
+                                            else:
+                                                cond_truthy = 'unknown'
+                                                cond_falsy = 'unknown'
 
                                             cons_state = "LIVE"
                                             alt_state = "LIVE"
@@ -466,15 +458,15 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                             cons_issues = []
                                             alt_issues = []
 
-                                            cons_proven = proven_non_null or (cond_status == 'proves_non_null')
-                                            alt_proven = proven_non_null or (cond_status == 'proves_null')
+                                            cons_proven = proven_non_null or (cond_truthy == 'proves_non_null')
+                                            alt_proven = proven_non_null or (cond_falsy == 'proves_non_null')
 
                                             if consequence:
                                                 cons_state = find_refs(consequence, cons_issues, cons_proven)
                                                 if always_returns(consequence):
                                                     cons_state = "EXITED"
                                             else:
-                                                if cond_status == 'proves_non_null':
+                                                if cond_truthy == 'proves_non_null':
                                                     cons_state = "ELIMINATED"
 
                                             if alternative:
@@ -482,16 +474,16 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                 if always_returns(alternative):
                                                     alt_state = "EXITED"
                                             else:
-                                                if cond_status == 'proves_null':
+                                                if cond_truthy == 'proves_null':
                                                     alt_state = "ELIMINATED"
 
-                                            if cond_status == 'proves_non_null':
+                                            if cond_truthy == 'proves_non_null':
                                                 cons_issues.clear()
                                                 if consequence and always_returns(consequence):
                                                     cons_state = "EXITED"
                                                 elif cons_state != "EXITED":
                                                     cons_state = "ELIMINATED"
-                                            elif cond_status == 'proves_null':
+                                            elif cond_falsy == 'proves_non_null':
                                                 alt_issues.clear()
                                                 if alternative and always_returns(alternative):
                                                     alt_state = "EXITED"
