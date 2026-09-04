@@ -189,28 +189,72 @@ def qt_kde_lint_reject_id_in_createobject(context):
 def qt_kde_lint_qml_component_createobject_null_dereference(context):
     context.find_components()
 
+    def always_returns(node):
+        if node.type in ('return_statement', 'throw_statement', 'break_statement', 'continue_statement'):
+            return True
+        if node.type == 'statement_block':
+            for c in node.children:
+                if always_returns(c):
+                    return True
+        return False
+
+    def is_shadowed(node, name):
+        curr = node.parent
+        while curr:
+            if curr.type in ('statement_block', 'program'):
+                for c in curr.children:
+                    if c.type in ('lexical_declaration', 'variable_declaration'):
+                        for decl in c.children:
+                            if decl.type == 'variable_declarator':
+                                ident = decl.children[0]
+                                if ident.type == 'identifier' and ident.text == name:
+                                    return True
+                    if c.type == 'function_declaration':
+                        for f_child in c.children:
+                            if f_child.type == 'identifier' and f_child.text == name:
+                                return True
+            elif curr.type == 'function_declaration':
+                for c in curr.children:
+                    if c.type == 'formal_parameters':
+                        for param in c.children:
+                            if param.type == 'identifier' and param.text == name:
+                                return True
+                            if param.type == 'assignment_pattern':
+                                if param.children[0].type == 'identifier' and param.children[0].text == name:
+                                    return True
+            elif curr.type == 'ui_object_initializer':
+                for c in curr.children:
+                    if c.type == 'ui_property':
+                        for p_child in c.children:
+                            if p_child.type == 'identifier' and p_child.text == name:
+                                return True
+            curr = curr.parent
+        return False
+
     def visit(node):
         if node.type == 'call_expression':
             member_expr, receiver, prop_ident, args = context.get_call_expression(node)
             if member_expr and prop_ident and prop_ident.text == b'createObject':
                 if receiver and receiver.text in context.known_components:
-                    # Check parent hierarchy for member_expression, ignoring parenthesized_expression
-                    parent = node.parent
-                    while parent and parent.type == 'parenthesized_expression':
-                        parent = parent.parent
+                    if is_shadowed(node, receiver.text):
+                        pass
+                    else:
+                        parent = node.parent
+                        while parent and parent.type == 'parenthesized_expression':
+                            parent = parent.parent
 
-                    if parent and parent.type == 'member_expression':
-                        is_optional = False
-                        for child in parent.children:
-                            if child.type == 'optional_chain' or child.text == b'?.':
-                                is_optional = True
-                                break
-                        if not is_optional:
-                            context.report_issue(
-                                node,
-                                "qt-kde-lint-qml-component-createobject-null-dereference",
-                                "Component.createObject() can return null. Check the result (or use a null-safe operation) before accessing the dynamically created object."
-                            )
+                        if parent and parent.type == 'member_expression':
+                            is_optional = False
+                            for child in parent.children:
+                                if child.type == 'optional_chain' or child.text == b'?.':
+                                    is_optional = True
+                                    break
+                            if not is_optional:
+                                context.report_issue(
+                                    node,
+                                    "qt-kde-lint-qml-component-createobject-null-dereference",
+                                    "Component.createObject() can return null. Check the result (or use a null-safe operation) before accessing the dynamically created object."
+                                )
 
         var_name = None
         val_expr = None
@@ -221,14 +265,14 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
             val_expr = val
         elif node.type == 'expression_statement':
             for child in node.children:
-                if child.type == 'assignment_expression':
-                    left, right = context.get_assignment_expression(child)
-                    if left and left.type == 'identifier' and right:
+                if child.type in ('assignment_expression', 'augmented_assignment_expression'):
+                    left = child.children[0]
+                    right = child.children[-1] if len(child.children) > 2 else None
+                    if left.type == 'identifier' and right:
                         var_name = left.text
                         val_expr = right
 
         if var_name and val_expr:
-            # Strip parenthesized expressions from val_expr
             while val_expr.type == 'parenthesized_expression':
                 for child in val_expr.children:
                     if child.type != '(' and child.type != ')':
@@ -239,6 +283,8 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                 member_expr, receiver, prop_ident, args = context.get_call_expression(val_expr)
                 if member_expr and prop_ident and prop_ident.text == b'createObject':
                     if receiver and receiver.text in context.known_components:
+                        if is_shadowed(val_expr, receiver.text):
+                            return
                         parent = node.parent
                         if parent and parent.type in ('statement_block', 'program'):
                             siblings = parent.children
@@ -252,40 +298,97 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                     sibling = siblings[i]
 
                                     def find_refs(n, refs):
+                                        if n.type in ('assignment_expression', 'augmented_assignment_expression'):
+                                            left = n.children[0]
+                                            if left.type == 'identifier' and left.text == var_name:
+                                                right = n.children[-1] if len(n.children) > 2 else None
+                                                if right:
+                                                    find_refs(right, refs)
+                                                refs['stopped'] = True
+                                                return
+
                                         if n.type == 'if_statement':
                                             cond = None
+                                            consequence = None
+                                            alternative = None
+
                                             for c in n.children:
                                                 if c.type == 'parenthesized_expression':
                                                     cond = c
-                                                    break
+                                                elif c.type not in ('if', 'else', 'parenthesized_expression', 'comment'):
+                                                    if consequence is None:
+                                                        consequence = c
+                                                    else:
+                                                        alternative = c
 
-                                            mentions_var = [False]
-                                            def check_mention(nn):
-                                                if nn.type == 'identifier' and nn.text == var_name:
-                                                    mentions_var[0] = True
                                             if cond:
-                                                context.walk(cond, check_mention)
+                                                find_refs(cond, refs)
+                                                if refs['stopped']: return
 
-                                            if mentions_var[0]:
-                                                is_negated = [False]
-                                                def check_neg(nn):
-                                                    if nn.type == 'unary_expression':
-                                                        for c in nn.children:
-                                                            if c.type == '!' or c.text == b'!':
-                                                                is_negated[0] = True
-                                                context.walk(cond, check_neg)
+                                            cond_status = 'unknown'
+                                            if cond:
+                                                expr = cond
+                                                while expr.type == 'parenthesized_expression':
+                                                    for c in expr.children:
+                                                        if c.type not in ('(', ')'):
+                                                            expr = c
+                                                            break
 
-                                                has_return = [False]
-                                                def check_return(nn):
-                                                    if nn.type == 'return_statement':
-                                                        has_return[0] = True
-                                                context.walk(n, check_return)
+                                                if expr.type == 'identifier' and expr.text == var_name:
+                                                    cond_status = 'proves_non_null'
+                                                elif expr.type == 'unary_expression':
+                                                    op = None
+                                                    arg = None
+                                                    for c in expr.children:
+                                                        if c.type == '!': op = c
+                                                        elif c.type == 'identifier': arg = c
+                                                    if op and arg and arg.text == var_name:
+                                                        cond_status = 'proves_null'
+                                                elif expr.type == 'binary_expression':
+                                                    left = None
+                                                    op = None
+                                                    right = None
+                                                    for c in expr.children:
+                                                        if c.type in ('==', '===', '!=', '!=='):
+                                                            op = c
+                                                        elif not op:
+                                                            left = c
+                                                        else:
+                                                            right = c
+                                                    if left and right and op:
+                                                        is_left_var = (left.type == 'identifier' and left.text == var_name)
+                                                        is_right_var = (right.type == 'identifier' and right.text == var_name)
+                                                        is_left_null = (left.type == 'null' or left.text == b'null')
+                                                        is_right_null = (right.type == 'null' or right.text == b'null')
 
-                                                if has_return[0] and is_negated[0]:
+                                                        if (is_left_var and is_right_null) or (is_left_null and is_right_var):
+                                                            if op.type in ('==', '==='):
+                                                                cond_status = 'proves_null'
+                                                            elif op.type in ('!=', '!=='):
+                                                                cond_status = 'proves_non_null'
+
+                                            if cond_status == 'proves_non_null':
+                                                if alternative:
+                                                    find_refs(alternative, refs)
+                                                    if refs['stopped']: return
+                                                if alternative and always_returns(alternative):
                                                     refs['early_return'] = True
-                                                else:
-                                                    refs['guarded'] = True
-                                                return
+
+                                            elif cond_status == 'proves_null':
+                                                if consequence:
+                                                    find_refs(consequence, refs)
+                                                    if refs['stopped']: return
+                                                if consequence and always_returns(consequence):
+                                                    refs['early_return'] = True
+
+                                            else:
+                                                if consequence:
+                                                    find_refs(consequence, refs)
+                                                    if refs['stopped']: return
+                                                if alternative:
+                                                    find_refs(alternative, refs)
+                                                    if refs['stopped']: return
+                                            return
 
                                         if n.type == 'member_expression':
                                             rec = None
@@ -304,16 +407,16 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                         for child in n.children:
                                             find_refs(child, refs)
+                                            if refs.get('stopped'):
+                                                break
 
-                                    refs = {'unsafe_derefs': [], 'early_return': False, 'guarded': False}
+                                    refs = {'unsafe_derefs': [], 'early_return': False, 'stopped': False}
                                     find_refs(sibling, refs)
 
-                                    if refs['early_return']:
+                                    if refs['early_return'] or refs['stopped']:
                                         break
 
-                                    if refs['guarded']:
-                                        pass
-                                    elif refs['unsafe_derefs']:
+                                    if refs['unsafe_derefs']:
                                         context.report_issue(
                                             sibling,
                                             "qt-kde-lint-qml-component-createobject-null-dereference",
