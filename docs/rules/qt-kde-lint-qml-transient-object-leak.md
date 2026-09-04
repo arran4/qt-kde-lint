@@ -4,7 +4,7 @@ Identifies when `Component.createObject()` is called inside a repeatable interac
 
 ## Why is this a problem?
 
-When a transient object (like a dynamically created `Menu` or `Popup`) is instantiated in an interaction handler and not destroyed, every click/interaction will leak a new instance of the object. Over time, this accumulates, causing memory bloat and potential UI/performance degradation.
+When a transient object (like a dynamically created `Menu` or `Popup`) is instantiated in an interaction handler and not destroyed, every click/interaction may cause memory leaks a new instance of the object. Over time, this accumulates, causing memory bloat and potential UI/performance degradation.
 
 ## Examples
 

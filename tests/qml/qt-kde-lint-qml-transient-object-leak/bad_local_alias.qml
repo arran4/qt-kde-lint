@@ -4,9 +4,10 @@ Item {
     Component { id: popupComponent; Rectangle {} }
 
     MouseArea {
-        onTapped: {
-            let dyn = getDynamicParent();
-            let p = popupComponent.createObject(dyn);
+        onClicked: {
+            let p = popupComponent.createObject(parent);
+            let q;
+            q = p;
             // [custom-qt-kde-lint-qml-transient-object-leak]
         }
     }
