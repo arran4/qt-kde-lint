@@ -21,28 +21,32 @@ runs:
   steps:
     - name: Ensure Python QML parser dependencies are installed
       if: inputs.qml-paths != ''
-      run: pip install -r ${{ github.action_path }}/requirements-qml.txt
+      run: python3 -m pip install -r ${{ github.action_path }}/requirements-qml.txt
       shell: bash
 
     - name: Run qt-kde-lint
+      env:
+        BUILD_DIR: ${{ inputs.build-directory }}
+        CLANG_TIDY: ${{ inputs.clang-tidy }}
+        CPP_PATHS: ${{ inputs.cpp-paths }}
+        QML_PATHS: ${{ inputs.qml-paths }}
       run: |
         ARGS=()
-        if [ -n "${{ inputs.build-directory }}" ]; then
-          ARGS+=(--build-dir "${{ inputs.build-directory }}")
+        if [ -n "$BUILD_DIR" ]; then
+          ARGS+=(--build-dir "$BUILD_DIR")
         fi
-        if [ -n "${{ inputs.clang-tidy }}" ]; then
-          ARGS+=(--clang-tidy "${{ inputs.clang-tidy }}")
+        if [ -n "$CLANG_TIDY" ]; then
+          ARGS+=(--clang-tidy "$CLANG_TIDY")
         fi
 
-        # Read space-separated paths safely using read -r -a
-        if [ -n "${{ inputs.cpp-paths }}" ]; then
+        if [ -n "$CPP_PATHS" ]; then
           ARGS+=(--cpp-paths)
-          read -r -a CPP_ARRAY <<< "${{ inputs.cpp-paths }}"
+          read -r -a CPP_ARRAY <<< "$CPP_PATHS"
           ARGS+=("${CPP_ARRAY[@]}")
         fi
-        if [ -n "${{ inputs.qml-paths }}" ]; then
+        if [ -n "$QML_PATHS" ]; then
           ARGS+=(--qml-paths)
-          read -r -a QML_ARRAY <<< "${{ inputs.qml-paths }}"
+          read -r -a QML_ARRAY <<< "$QML_PATHS"
           ARGS+=("${QML_ARRAY[@]}")
         fi
 

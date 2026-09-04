@@ -93,6 +93,7 @@ def main() -> int:
                 args.clang_tidy,
                 "--experimental-custom-checks",
                 f"--config-file={config_file}",
+                "--warnings-as-errors=custom-qt-kde-lint-*",
                 "-p", str(args.build_dir)
             ]
 
