@@ -718,6 +718,59 @@ def qt_kde_lint_qml_transient_object_leak(context):
 
     context.walk(context.tree.root_node, visit)
 
+
+@register_rule
+def qt_kde_lint_action_semantic_context(context):
+    def visit(node):
+        if node.type == 'ui_object_definition':
+            # Check if this object is an Action or Kirigami.Action strictly
+            is_action = False
+            for child in node.children:
+                if child.type == 'identifier' and child.text == b'Action':
+                    is_action = True
+                    break
+                elif child.type == 'nested_identifier':
+                    # Check strictly for Kirigami.Action
+                    parts = []
+                    def get_parts(n):
+                        if n.type == 'identifier':
+                            parts.append(n.text)
+                        for c in n.children:
+                            get_parts(c)
+                    get_parts(child)
+                    if parts == [b'Kirigami', b'Action']:
+                        is_action = True
+                        break
+
+            if is_action:
+                # Find its text property
+                for child in node.children:
+                    if child.type == 'ui_object_initializer':
+                        val_node = context.get_property_binding(child, b'text')
+                        if val_node:
+                            # val_node is an expression_statement
+                            for exp_child in val_node.children:
+                                if exp_child.type == 'call_expression':
+                                    ident = exp_child.children[0]
+                                    if ident.type == 'identifier' and ident.text in (b'i18n', b'i18nd', b'ki18n', b'ki18nd'):
+                                        # Determine the suggested function
+                                        call_name = ident.text.decode('utf-8')
+                                        sugg = call_name.replace('i18n', 'i18nc')
+                                        if call_name == 'i18nd': sugg = 'i18ndc'
+                                        if call_name == 'ki18nd': sugg = 'ki18ndc'
+                                        if call_name == 'ki18n': sugg = 'ki18nc'
+                                        # Actually it's simple: just append 'c' to the call name
+                                        sugg = call_name + 'c'
+
+                                        # It's missing context
+                                        context.report_issue(
+                                            exp_child,
+                                            "qt-kde-lint-action-semantic-context",
+                                            f'UI action labels translated with plain {call_name}() lack semantic context. Prefer {sugg}() with a semantic context such as "@action" to aid translators.'
+                                        )
+
+    context.walk(context.tree.root_node, visit)
+
 def check_qml(filepath):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
