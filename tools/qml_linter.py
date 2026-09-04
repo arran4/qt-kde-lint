@@ -315,14 +315,69 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                     # EXITED: Flow exits (return/break/throw)
                                     # UNCERTAIN: Flow uncertainty creates an analysis barrier
 
-                                    def find_refs(n, out_issues):
+                                    def find_refs(n, out_issues, proven_non_null=False):
                                         if n.type in ('assignment_expression', 'augmented_assignment_expression'):
                                             left = n.children[0]
                                             if left.type == 'identifier' and left.text == var_name:
                                                 right = n.children[-1] if len(n.children) > 2 else None
                                                 if right:
-                                                    find_refs(right, out_issues)
+                                                    find_refs(right, out_issues, proven_non_null)
                                                 return "ELIMINATED"
+
+                                        if n.type == 'binary_expression':
+                                            op_node = None
+                                            for c in n.children:
+                                                if c.type in ('&&', '||'): op_node = c
+                                            if op_node:
+                                                left = n.children[0]
+                                                right = n.children[-1]
+
+                                                left_state = find_refs(left, out_issues, proven_non_null)
+                                                if left_state != "LIVE":
+                                                    return left_state
+
+                                                if op_node.type == '&&':
+                                                    is_left_proves_non_null = False
+                                                    if left.type == 'identifier' and left.text == var_name:
+                                                        is_left_proves_non_null = True
+                                                    elif left.type == 'binary_expression':
+                                                        for c in left.children:
+                                                            if c.type in ('!=', '!=='):
+                                                                l2 = left.children[0]
+                                                                r2 = left.children[-1]
+                                                                if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
+                                                                    is_left_proves_non_null = True
+                                                                    break
+
+                                                    right_proven = proven_non_null or is_left_proves_non_null
+                                                    right_state = find_refs(right, out_issues, right_proven)
+                                                    if right_state != "LIVE":
+                                                        return right_state
+                                                    return "LIVE"
+                                                elif op_node.type == '||':
+                                                    is_left_proves_null = False
+                                                    if left.type == 'unary_expression':
+                                                        op = None
+                                                        arg = None
+                                                        for c in left.children:
+                                                            if c.type == '!': op = c
+                                                            elif c.type == 'identifier': arg = c
+                                                        if op and arg and arg.text == var_name:
+                                                            is_left_proves_null = True
+                                                    elif left.type == 'binary_expression':
+                                                        for c in left.children:
+                                                            if c.type in ('==', '==='):
+                                                                l2 = left.children[0]
+                                                                r2 = left.children[-1]
+                                                                if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
+                                                                    is_left_proves_null = True
+                                                                    break
+
+                                                    right_proven = proven_non_null or is_left_proves_null
+                                                    right_state = find_refs(right, out_issues, right_proven)
+                                                    if right_state != "LIVE":
+                                                        return right_state
+                                                    return "LIVE"
 
                                         if n.type == 'if_statement':
                                             cond = None
@@ -346,6 +401,11 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                         if c.type not in ('(', ')'):
                                                             expr = c
                                                             break
+
+                                                # Traverse condition, which might evaluate short circuits.
+                                                cond_state = find_refs(cond, out_issues, proven_non_null)
+                                                if cond_state != "LIVE":
+                                                    return cond_state
 
                                                 def safe_cond_derefs(cond_node):
                                                     if cond_node.type == 'binary_expression':
@@ -372,10 +432,6 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                                 if safe_cond_derefs(expr):
                                                     cond_status = 'proves_non_null'
-                                                else:
-                                                    cond_state = find_refs(cond, out_issues)
-                                                    if cond_state != "LIVE":
-                                                        return cond_state
 
                                                 if cond_status == 'unknown':
                                                     if expr.type == 'identifier' and expr.text == var_name:
@@ -393,19 +449,12 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                         op = None
                                                         right = None
                                                         for c in expr.children:
-                                                            if c.type in ('==', '===', '!=', '!=='):
-                                                                op = c
-                                                            elif not op:
-                                                                left = c
-                                                            else:
-                                                                right = c
-                                                        if left and right and op:
-                                                            is_left_var = (left.type == 'identifier' and left.text == var_name)
-                                                            is_right_var = (right.type == 'identifier' and right.text == var_name)
-                                                            is_left_null = (left.type == 'null' or left.text == b'null')
-                                                            is_right_null = (right.type == 'null' or right.text == b'null')
-
-                                                            if (is_left_var and is_right_null) or (is_left_null and is_right_var):
+                                                            if c.type in ('!=', '!==', '==', '==='): op = c
+                                                        if op:
+                                                            left = expr.children[0]
+                                                            right = expr.children[-1]
+                                                            if (left.type == 'identifier' and left.text == var_name and (right.type == 'null' or right.text == b'null')) or \
+                                                               (right.type == 'identifier' and right.text == var_name and (left.type == 'null' or left.text == b'null')):
                                                                 if op.type in ('==', '==='):
                                                                     cond_status = 'proves_null'
                                                                 elif op.type in ('!=', '!=='):
@@ -417,8 +466,11 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                             cons_issues = []
                                             alt_issues = []
 
+                                            cons_proven = proven_non_null or (cond_status == 'proves_non_null')
+                                            alt_proven = proven_non_null or (cond_status == 'proves_null')
+
                                             if consequence:
-                                                cons_state = find_refs(consequence, cons_issues)
+                                                cons_state = find_refs(consequence, cons_issues, cons_proven)
                                                 if always_returns(consequence):
                                                     cons_state = "EXITED"
                                             else:
@@ -426,7 +478,7 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     cons_state = "ELIMINATED"
 
                                             if alternative:
-                                                alt_state = find_refs(alternative, alt_issues)
+                                                alt_state = find_refs(alternative, alt_issues, alt_proven)
                                                 if always_returns(alternative):
                                                     alt_state = "EXITED"
                                             else:
@@ -461,12 +513,12 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                         if n.type in ('while_statement', 'for_statement', 'for_in_statement', 'switch_statement'):
                                             for child in n.children:
-                                                find_refs(child, out_issues)
+                                                find_refs(child, out_issues, proven_non_null)
                                             return "LIVE"
 
                                         if n.type in ('do_statement', 'try_statement'):
                                             for child in n.children:
-                                                find_refs(child, out_issues)
+                                                find_refs(child, out_issues, proven_non_null)
                                             return "UNCERTAIN"
 
                                         if n.type == 'member_expression':
@@ -481,15 +533,16 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     if c.type == 'optional_chain' or c.text == b'?.':
                                                         is_optional = True
                                                         break
-                                                if not is_optional:
+                                                if not is_optional and not proven_non_null:
                                                     out_issues.append(n)
 
                                         for child in n.children:
-                                            child_state = find_refs(child, out_issues)
+                                            child_state = find_refs(child, out_issues, proven_non_null)
                                             if child_state != "LIVE":
                                                 return child_state
 
                                         return "LIVE"
+
 
                                     out_issues = []
 
@@ -498,7 +551,7 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                         if left.type == 'identifier' and left.text == var_name:
                                             right = sibling.children[0].children[-1] if len(sibling.children[0].children) > 2 else None
                                             if right:
-                                                find_refs(right, out_issues)
+                                                find_refs(right, out_issues, False)
                                             break
                                         else:
                                             state = find_refs(sibling, out_issues)
