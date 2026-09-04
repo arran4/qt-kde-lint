@@ -26,13 +26,13 @@ jobs:
       - name: Setup test fixtures
         run: |
           mkdir -p build
-          echo '[{"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-connect-by-name/good.cpp", "file": "../tests/qt-kde-lint-connect-by-name/good.cpp"}]' > build/compile_commands.json
+          echo '[{"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/good.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/good.cpp"}]' > build/compile_commands.json
 
       - name: Test action success (both)
         uses: ./
         with:
           build-directory: build
-          cpp-paths: tests/qt-kde-lint-connect-by-name/good.cpp
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/good.cpp
           qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good.qml
 
       - name: Test action failure (both)
@@ -41,7 +41,7 @@ jobs:
         uses: ./
         with:
           build-directory: build
-          cpp-paths: tests/qt-kde-lint-connect-by-name/bad.cpp
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/bad.cpp
           qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad.qml
 
       - name: Check failure (both)
@@ -55,7 +55,7 @@ jobs:
         uses: ./
         with:
           build-directory: build
-          cpp-paths: tests/qt-kde-lint-connect-by-name/good.cpp
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/good.cpp
 
       - name: Test action failure (C++ only)
         id: test-cpp-failure
@@ -63,7 +63,7 @@ jobs:
         uses: ./
         with:
           build-directory: build
-          cpp-paths: tests/qt-kde-lint-connect-by-name/bad.cpp
+          cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/bad.cpp
 
       - name: Check failure (C++ only)
         run: |
