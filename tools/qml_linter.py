@@ -297,14 +297,17 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                 for i in range(idx + 1, len(siblings)):
                                     sibling = siblings[i]
 
-                                    def find_refs(n, refs):
+                                    def find_refs(n, refs, is_top_level_sibling=False):
                                         if n.type in ('assignment_expression', 'augmented_assignment_expression'):
                                             left = n.children[0]
                                             if left.type == 'identifier' and left.text == var_name:
                                                 right = n.children[-1] if len(n.children) > 2 else None
                                                 if right:
                                                     find_refs(right, refs)
-                                                refs['stopped'] = True
+                                                # ONLY stop if it's an unconditional reassignment at the top level
+                                                # of our statement block iteration. Otherwise, don't flag `stopped` for all siblings.
+                                                if is_top_level_sibling:
+                                                    refs['stopped'] = True
                                                 return
 
                                         if n.type == 'if_statement':
@@ -321,10 +324,6 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                     else:
                                                         alternative = c
 
-                                            if cond:
-                                                find_refs(cond, refs)
-                                                if refs['stopped']: return
-
                                             cond_status = 'unknown'
                                             if cond:
                                                 expr = cond
@@ -334,60 +333,93 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                             expr = c
                                                             break
 
-                                                if expr.type == 'identifier' and expr.text == var_name:
-                                                    cond_status = 'proves_non_null'
-                                                elif expr.type == 'unary_expression':
-                                                    op = None
-                                                    arg = None
-                                                    for c in expr.children:
-                                                        if c.type == '!': op = c
-                                                        elif c.type == 'identifier': arg = c
-                                                    if op and arg and arg.text == var_name:
-                                                        cond_status = 'proves_null'
-                                                elif expr.type == 'binary_expression':
-                                                    left = None
-                                                    op = None
-                                                    right = None
-                                                    for c in expr.children:
-                                                        if c.type in ('==', '===', '!=', '!=='):
-                                                            op = c
-                                                        elif not op:
-                                                            left = c
-                                                        else:
-                                                            right = c
-                                                    if left and right and op:
-                                                        is_left_var = (left.type == 'identifier' and left.text == var_name)
-                                                        is_right_var = (right.type == 'identifier' and right.text == var_name)
-                                                        is_left_null = (left.type == 'null' or left.text == b'null')
-                                                        is_right_null = (right.type == 'null' or right.text == b'null')
+                                                # Check for short-circuit && or || inside the condition
+                                                def safe_cond_derefs(cond_node):
+                                                    if cond_node.type == 'binary_expression':
+                                                        op_node = None
+                                                        for c in cond_node.children:
+                                                            if c.type in ('&&', '||'): op_node = c
+                                                        if op_node:
+                                                            if op_node.type == '&&':
+                                                                # If left proves non-null, right is safe
+                                                                left_cond = cond_node.children[0]
 
-                                                        if (is_left_var and is_right_null) or (is_left_null and is_right_var):
-                                                            if op.type in ('==', '==='):
-                                                                cond_status = 'proves_null'
-                                                            elif op.type in ('!=', '!=='):
-                                                                cond_status = 'proves_non_null'
+                                                                is_left_proves_non_null = False
+                                                                if left_cond.type == 'identifier' and left_cond.text == var_name:
+                                                                    is_left_proves_non_null = True
+                                                                elif left_cond.type == 'binary_expression':
+                                                                    for c in left_cond.children:
+                                                                        if c.type in ('!=', '!=='):
+                                                                            l2 = left_cond.children[0]
+                                                                            r2 = left_cond.children[-1]
+                                                                            if (l2.type == 'identifier' and l2.text == var_name and (r2.type == 'null' or r2.text == b'null')) or (r2.type == 'identifier' and r2.text == var_name and (l2.type == 'null' or l2.text == b'null')):
+                                                                                is_left_proves_non_null = True
+                                                                                break
+                                                                if is_left_proves_non_null:
+                                                                    return True
+                                                    return False
+
+                                                if safe_cond_derefs(expr):
+                                                    # It's an && condition that makes the right-hand safe, and the consequence safe.
+                                                    cond_status = 'proves_non_null'
+                                                    # Do not visit condition because it has a safe short-circuit
+                                                else:
+                                                    find_refs(cond, refs)
+                                                    if refs.get('stopped'): return
+
+                                                if cond_status == 'unknown':
+                                                    if expr.type == 'identifier' and expr.text == var_name:
+                                                        cond_status = 'proves_non_null'
+                                                    elif expr.type == 'unary_expression':
+                                                        op = None
+                                                        arg = None
+                                                        for c in expr.children:
+                                                            if c.type == '!': op = c
+                                                            elif c.type == 'identifier': arg = c
+                                                        if op and arg and arg.text == var_name:
+                                                            cond_status = 'proves_null'
+                                                    elif expr.type == 'binary_expression':
+                                                        left = None
+                                                        op = None
+                                                        right = None
+                                                        for c in expr.children:
+                                                            if c.type in ('==', '===', '!=', '!=='):
+                                                                op = c
+                                                            elif not op:
+                                                                left = c
+                                                            else:
+                                                                right = c
+                                                        if left and right and op:
+                                                            is_left_var = (left.type == 'identifier' and left.text == var_name)
+                                                            is_right_var = (right.type == 'identifier' and right.text == var_name)
+                                                            is_left_null = (left.type == 'null' or left.text == b'null')
+                                                            is_right_null = (right.type == 'null' or right.text == b'null')
+
+                                                            if (is_left_var and is_right_null) or (is_left_null and is_right_var):
+                                                                if op.type in ('==', '==='):
+                                                                    cond_status = 'proves_null'
+                                                                elif op.type in ('!=', '!=='):
+                                                                    cond_status = 'proves_non_null'
 
                                             if cond_status == 'proves_non_null':
                                                 if alternative:
                                                     find_refs(alternative, refs)
-                                                    if refs['stopped']: return
                                                 if alternative and always_returns(alternative):
-                                                    refs['early_return'] = True
+                                                    if is_top_level_sibling:
+                                                        refs['early_return'] = True
 
                                             elif cond_status == 'proves_null':
                                                 if consequence:
                                                     find_refs(consequence, refs)
-                                                    if refs['stopped']: return
                                                 if consequence and always_returns(consequence):
-                                                    refs['early_return'] = True
+                                                    if is_top_level_sibling:
+                                                        refs['early_return'] = True
 
                                             else:
                                                 if consequence:
                                                     find_refs(consequence, refs)
-                                                    if refs['stopped']: return
                                                 if alternative:
                                                     find_refs(alternative, refs)
-                                                    if refs['stopped']: return
                                             return
 
                                         if n.type == 'member_expression':
@@ -407,11 +439,14 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
 
                                         for child in n.children:
                                             find_refs(child, refs)
-                                            if refs.get('stopped'):
-                                                break
 
                                     refs = {'unsafe_derefs': [], 'early_return': False, 'stopped': False}
-                                    find_refs(sibling, refs)
+
+                                    # We treat a sibling as a top-level execution path relative to the declaration
+                                    if sibling.type == 'expression_statement' and sibling.children[0].type in ('assignment_expression', 'augmented_assignment_expression'):
+                                        find_refs(sibling.children[0], refs, is_top_level_sibling=True)
+                                    else:
+                                        find_refs(sibling, refs, is_top_level_sibling=True)
 
                                     if refs['early_return'] or refs['stopped']:
                                         break
