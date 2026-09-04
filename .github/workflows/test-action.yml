@@ -26,7 +26,7 @@ jobs:
       - name: Setup test fixtures
         run: |
           mkdir -p build
-          echo '[{"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/good.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/good.cpp"}]' > build/compile_commands.json
+          echo '[{"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/good.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/good.cpp"}, {"directory": "'$(pwd)/build'", "command": "clang++ -c -std=c++17 ../tests/qt-kde-lint-contextless-qobject-capture/bad.cpp", "file": "../tests/qt-kde-lint-contextless-qobject-capture/bad.cpp"}]' > build/compile_commands.json
 
       - name: Test action success (both)
         uses: ./
