@@ -667,11 +667,25 @@ def qt_kde_lint_qml_transient_object_leak(context):
                                 left = u.children[0]
                                 if right.type == 'identifier' and right.text == var_text:
                                     # ONLY safe if assigning to a NON-LOCAL property/variable
-                                    if left.type == 'identifier' and left.text in local_vars:
-                                        # local alias, not safe
-                                        pass
+                                    if left.type == 'identifier':
+                                        if left.text in local_vars:
+                                            # local alias, not safe
+                                            pass
+                                        else:
+                                            is_safe = True
+                                            return
+                                    elif left.type == 'member_expression':
+                                        # find root receiver of member expression
+                                        root = left
+                                        while root.type == 'member_expression' and len(root.children) > 0:
+                                            root = root.children[0]
+                                        if root.type == 'identifier' and root.text in local_vars:
+                                            # member of a local variable, not safe
+                                            pass
+                                        else:
+                                            is_safe = True
+                                            return
                                     else:
-                                        # non-local, so it escapes
                                         is_safe = True
                                         return
 
@@ -683,7 +697,11 @@ def qt_kde_lint_qml_transient_object_leak(context):
                                         if arg_child.type == 'identifier' and arg_child.text == var_text:
                                             # Is it a method call on a known retaining object? e.g. myArray.push(u)
                                             if m_expr and p_ident and p_ident.text in (b'push', b'append', b'insert'):
-                                                if rec and rec.type == 'identifier' and rec.text not in local_vars:
+                                                # Need to find root of rec if it's a member expression
+                                                root_rec = rec
+                                                while root_rec and root_rec.type == 'member_expression' and len(root_rec.children) > 0:
+                                                    root_rec = root_rec.children[0]
+                                                if root_rec and root_rec.type == 'identifier' and root_rec.text not in local_vars:
                                                     is_safe = True
                                                     return
 
