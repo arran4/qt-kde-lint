@@ -34,4 +34,12 @@ Item {
     MyObject {
         text: i18n("Custom object text")
     }
+
+    MyControls.Action {
+        text: i18n("Custom action-like component")
+    }
+
+    Something.Action {
+        text: i18nd("mydomain", "Custom action")
+    }
 }
