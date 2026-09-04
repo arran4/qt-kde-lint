@@ -474,7 +474,7 @@ def qt_kde_lint_qml_component_createobject_null_dereference(context):
                                                 if always_returns(alternative):
                                                     alt_state = "EXITED"
                                             else:
-                                                if cond_truthy == 'proves_null':
+                                                if cond_falsy == 'proves_non_null':
                                                     alt_state = "ELIMINATED"
 
                                             if cond_truthy == 'proves_non_null':
