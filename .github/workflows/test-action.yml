@@ -33,7 +33,7 @@ jobs:
         with:
           build-directory: build
           cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/good.cpp
-          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good.qml
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good_explicit_destroy.qml
 
       - name: Test action failure (both)
         id: test-failure
@@ -42,7 +42,7 @@ jobs:
         with:
           build-directory: build
           cpp-paths: tests/qt-kde-lint-contextless-qobject-capture/bad.cpp
-          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad.qml
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad_repeatable_handler.qml
 
       - name: Check failure (both)
         run: |
@@ -75,14 +75,14 @@ jobs:
       - name: Test action success (QML only)
         uses: ./
         with:
-          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good.qml
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/good_explicit_destroy.qml
 
       - name: Test action failure (QML only)
         id: test-qml-failure
         continue-on-error: true
         uses: ./
         with:
-          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad.qml
+          qml-paths: tests/qml/qt-kde-lint-qml-transient-object-leak/bad_repeatable_handler.qml
 
       - name: Check failure (QML only)
         run: |
